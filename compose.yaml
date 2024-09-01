@@ -1,0 +1,9 @@
+services:
+  uptime-kuma:
+    image: ghcr.io/luucfr/uptime-sns:master
+    platform: linux/x86_64
+    volumes:
+      - ./data:/app/data
+    ports:
+      - 3001:3001
+    restart: unless-stopped
