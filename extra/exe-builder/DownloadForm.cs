@@ -55,7 +55,7 @@ namespace UptimeKuma {
                 }
 
                 downloadQueue.Enqueue(new DownloadItem {
-                    URL = $"https://github.com/luucfr/uptime-sns/archive/refs/tags/{uptimeKumaVersion}.zip",
+                    URL = $"https://github.com/luucfr/sns-uptime/archive/refs/tags/{uptimeKumaVersion}.zip",
                     Filename = "core.zip",
                     TargetFolder = "core"
                 });

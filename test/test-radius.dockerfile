@@ -1,5 +1,5 @@
 # Container running a test radius server
-# More instructions in https://github.com/luucfr/uptime-sns/pull/1635
+# More instructions in https://github.com/luucfr/sns-uptime/pull/1635
 
 FROM freeradius/freeradius-server:latest
 

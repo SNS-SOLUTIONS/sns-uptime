@@ -64,7 +64,7 @@
         </div>
 
         <div class="text-center mt-3" style="font-size: 13px;">
-            <a href="https://github.com/luucfr/uptime-sns/wiki/API-Keys" target="_blank">{{ $t("Learn More") }}</a>
+            <a href="https://github.com/luucfr/sns-uptime/wiki/API-Keys" target="_blank">{{ $t("Learn More") }}</a>
         </div>
 
         <Confirm ref="confirmPause" :yes-text="$t('Yes')" :no-text="$t('No')" @yes="disableKey">

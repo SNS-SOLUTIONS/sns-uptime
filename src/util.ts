@@ -157,7 +157,7 @@ export function ucfirst(str: string) {
 }
 
 /**
- * @deprecated Use log.debug (https://github.com/luucfr/uptime-sns/pull/910)
+ * @deprecated Use log.debug (https://github.com/luucfr/sns-uptime/pull/910)
  * @param msg Message to write
  * @returns {void}
  */

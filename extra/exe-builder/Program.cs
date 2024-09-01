@@ -221,11 +221,11 @@ namespace UptimeKuma {
 
         void VisitGitHub(object sender, EventArgs e) {
             if (intranetOnly) {
-                MessageBox.Show("You have parsed in --intranet so we will not try to access the internet or visit github.com, please go to https://github.com/luucfr/uptime-sns if you want to visit github.");
+                MessageBox.Show("You have parsed in --intranet so we will not try to access the internet or visit github.com, please go to https://github.com/luucfr/sns-uptime if you want to visit github.");
                 return;
             }
 
-            Process.Start("https://github.com/luucfr/uptime-sns");
+            Process.Start("https://github.com/luucfr/sns-uptime");
         }
 
         void About(object sender, EventArgs e)
