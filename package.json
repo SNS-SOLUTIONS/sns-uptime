@@ -72,7 +72,7 @@
         "start-server-node14-win": "private\\node14\\node.exe server/server.js"
     },
     "dependencies": {
-        "@grpc/grpc-js": "~1.7.3",
+        "@grpc/grpc-js": "~1.8.22",
         "@louislam/ping": "~0.4.4-mod.1",
         "@louislam/sqlite3": "15.1.6",
         "@vvo/tzdb": "^6.125.0",
