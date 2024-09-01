@@ -1,6 +1,6 @@
 services:
   uptime-kuma:
-    image: ghcr.io/luucfr/uptime-sns:master
+    image: ghcr.io/luucfr/sns-uptime:main
     platform: linux/x86_64
     volumes:
       - ./data:/app/data
