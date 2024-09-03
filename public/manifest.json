@@ -1,6 +1,6 @@
 {
-    "name": "Uptime Kuma",
-    "short_name": "Uptime Kuma",
+    "name": "SNS Uptime",
+    "short_name": "SNS Uptime",
     "start_url": "/",
     "background_color": "#fff",
     "display": "standalone",

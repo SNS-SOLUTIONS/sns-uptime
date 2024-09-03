@@ -21,7 +21,7 @@ import * as jsonata from "jsonata";
 
 export const isDev = process.env.NODE_ENV === "development";
 export const isNode = typeof process !== "undefined" && process?.versions?.node;
-export const appName = "Uptime Kuma";
+export const appName = "SNS Uptime";
 export const DOWN = 0;
 export const UP = 1;
 export const PENDING = 2;

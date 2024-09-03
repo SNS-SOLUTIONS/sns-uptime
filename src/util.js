@@ -21,7 +21,7 @@ const dayjs = require("dayjs");
 const jsonata = require("jsonata");
 exports.isDev = process.env.NODE_ENV === "development";
 exports.isNode = typeof process !== "undefined" && ((_a = process === null || process === void 0 ? void 0 : process.versions) === null || _a === void 0 ? void 0 : _a.node);
-exports.appName = "Uptime Kuma";
+exports.appName = "SNS Uptime";
 exports.DOWN = 0;
 exports.UP = 1;
 exports.PENDING = 2;
