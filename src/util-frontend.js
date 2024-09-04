@@ -166,6 +166,12 @@ export function loadToastSettings() {
             if (toast.timeout === 0) {
                 return false;
             } else {
+                // Play sound when the toast is created
+                const audio = new Audio('/sounds/me-doxean.mp3'); // Chemin vers le fichier audio
+                audio.play().catch(error => {
+                    console.error("Erreur lors de la lecture du son :", error);
+                });
+
                 return toast;
             }
         },
