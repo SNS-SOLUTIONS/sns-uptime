@@ -23,8 +23,7 @@ jobs:
           password: ${{ secrets.SSH_PASSWORD }}
           port: ${{ secrets.SSH_PORT }}
           script: |
-            sudo su
             cd /home/uptime-kuma/
-            docker compose pull
-            docker compose up -d
-            docker image prune -f
+            sudo docker compose pull
+            sudo docker compose up -d
+            sudo docker image prune -f
