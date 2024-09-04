@@ -166,11 +166,18 @@ export function loadToastSettings() {
             if (toast.timeout === 0) {
                 return false;
             } else {
-                // Play sound when the toast is created
-                const audio = new Audio('/sounds/me-doxean.mp3'); // Chemin vers le fichier audio
-                audio.play().catch(error => {
-                    console.error("Erreur lors de la lecture du son :", error);
-                });
+                // Play sound depending on the type of toast
+                if (toast.type === "success") {
+                    const successAudio = new Audio("/sounds/success.mp3");
+                    successAudio.play().catch(error => {
+                        console.error("Error playing success sound:", error);
+                    });
+                } else if (toast.type === "error") {
+                    const errorAudio = new Audio("/sounds/error.mp3");
+                    errorAudio.play().catch(error => {
+                        console.error("Error playing error sound:", error);
+                    });
+                }
 
                 return toast;
             }
