@@ -1,9 +1,10 @@
 name: Restart / Update Prod SNS Uptime
 
 on:
-  push:
-    branches:
-      - main
+  workflow_run:
+    workflows: ["Docker"]
+    types:
+      - completed
   workflow_dispatch:
 
 jobs:
