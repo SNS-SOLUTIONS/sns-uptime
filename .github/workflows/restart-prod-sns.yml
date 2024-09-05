@@ -1,10 +1,6 @@
 name: Restart / Update Prod SNS Uptime
 
 on:
-  workflow_run:
-    workflows: ["Docker"]
-    types:
-      - completed
   workflow_dispatch:
 
 jobs:
