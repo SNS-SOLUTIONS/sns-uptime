@@ -79,7 +79,7 @@ class StatusPage extends BeanModel {
         head.append(ogDescription);
 
         // Preload data
-        // Add jsesc, fix https://github.com/luucfr/sns-uptime/issues/2186
+        // Add jsesc, fix https://github.com/SNS-SOLUTIONS/sns-uptime/issues/2186
         const escapedJSONObject = jsesc(await StatusPage.getStatusPageData(statusPage), {
             "isScriptContext": true
         });

@@ -50,8 +50,8 @@
                     </div>
 
                     {{ $t("Don't know how to get the token? Please read the guide:") }}<br />
-                    <a href="https://github.com/luucfr/sns-uptime/wiki/Reverse-Proxy-with-Cloudflare-Tunnel" target="_blank">
-                        https://github.com/luucfr/sns-uptime/wiki/Reverse-Proxy-with-Cloudflare-Tunnel
+                    <a href="https://github.com/SNS-SOLUTIONS/sns-uptime/wiki/Reverse-Proxy-with-Cloudflare-Tunnel" target="_blank">
+                        https://github.com/SNS-SOLUTIONS/sns-uptime/wiki/Reverse-Proxy-with-Cloudflare-Tunnel
                     </a>
                 </div>
             </div>
@@ -89,7 +89,7 @@
         <h4 class="mt-4">{{ $t("Other Software") }}</h4>
         <div>
             {{ $t("For example: nginx, Apache and Traefik.") }} <br />
-            {{ $t("Please read") }} <a href="https://github.com/luucfr/sns-uptime/wiki/Reverse-Proxy" target="_blank">https://github.com/luucfr/sns-uptime/wiki/Reverse-Proxy</a>.
+            {{ $t("Please read") }} <a href="https://github.com/SNS-SOLUTIONS/sns-uptime/wiki/Reverse-Proxy" target="_blank">https://github.com/SNS-SOLUTIONS/sns-uptime/wiki/Reverse-Proxy</a>.
         </div>
 
         <h4 class="my-4">{{ $t("HTTP Headers") }}</h4>

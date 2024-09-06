@@ -4,7 +4,7 @@
     "license": "MIT",
     "repository": {
         "type": "git",
-        "url": "https://github.com/luucfr/sns-uptime.git"
+        "url": "https://github.com/SNS-SOLUTIONS/sns-uptime.git"
     },
     "engines": {
         "node": "18 || >= 20.4.0"

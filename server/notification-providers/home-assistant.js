@@ -24,7 +24,7 @@ class HomeAssistant extends NotificationProvider {
                         name: monitorJSON?.name,
                         status: heartbeatJSON?.status,
                         channel: "Uptime Kuma",
-                        icon_url: "https://github.com/luucfr/sns-uptime/blob/master/public/icon.png?raw=true",
+                        icon_url: "https://github.com/SNS-SOLUTIONS/sns-uptime/blob/master/public/icon.png?raw=true",
                     } }),
                 },
                 {

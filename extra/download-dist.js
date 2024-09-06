@@ -9,7 +9,7 @@ const version = packageJSON.version;
 
 const filename = "dist.tar.gz";
 
-const url = `https://github.com/luucfr/sns-uptime/releases/download/${version}/${filename}`;
+const url = `https://github.com/SNS-SOLUTIONS/sns-uptime/releases/download/${version}/${filename}`;
 download(url);
 
 /**

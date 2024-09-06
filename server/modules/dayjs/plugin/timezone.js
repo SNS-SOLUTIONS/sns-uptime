@@ -1,6 +1,6 @@
 /**
  * Copy from node_modules/dayjs/plugin/timezone.js
- * Try to fix https://github.com/luucfr/sns-uptime/issues/2318
+ * Try to fix https://github.com/SNS-SOLUTIONS/sns-uptime/issues/2318
  * Source: https://github.com/iamkun/dayjs/tree/dev/src/plugin/utc
  * License: MIT
  */
