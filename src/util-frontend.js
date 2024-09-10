@@ -190,7 +190,7 @@ export function loadToastSettings() {
  * @returns {(number|boolean)} Timeout in ms. If false timeout disabled.
  */
 export function getToastSuccessTimeout() {
-    let successTimeout = 20000;
+    let successTimeout = 500000;
 
     if (localStorage.toastSuccessTimeout !== undefined) {
         const parsedTimeout = parseInt(localStorage.toastSuccessTimeout);
@@ -211,7 +211,7 @@ export function getToastSuccessTimeout() {
  * @returns {(number|boolean)} Timeout in ms. If false timeout disabled.
  */
 export function getToastErrorTimeout() {
-    let errorTimeout = -1;
+    let errorTimeout = 500000;
 
     if (localStorage.toastErrorTimeout !== undefined) {
         const parsedTimeout = parseInt(localStorage.toastErrorTimeout);
