@@ -91,8 +91,8 @@ export default {
 
     data() {
         return {
-            toastSuccessTimeoutSecs: 500,
-            toastErrorTimeoutSecs: 500,
+            toastSuccessTimeoutSecs: 300,
+            toastErrorTimeoutSecs: 300,
             /**
              * Variable to store the input for new certificate expiry day.
              */
