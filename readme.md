@@ -50,7 +50,7 @@ mkdir /home/sns-uptime
 Téléchargement du fichier docker-compose :
 ```bash
 cd /home/sns-uptime
-wget https://raw.githubusercontent.com/luucfr/sns-uptime/main/compose.yaml
+wget https://raw.githubusercontent.com/sns-solutions/sns-uptime/main/compose.yaml
 ```
 
 ## Démarrage de l'application
