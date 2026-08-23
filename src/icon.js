@@ -52,6 +52,7 @@ import {
     faCertificate,
     faShieldAlt,
     faFolder,
+    faUserCheck,
 } from "@fortawesome/free-solid-svg-icons";
 
 library.add(
@@ -101,6 +102,7 @@ library.add(
     faCertificate,
     faShieldAlt,
     faFolder,
+    faUserCheck,
 );
 
 export { FontAwesomeIcon };

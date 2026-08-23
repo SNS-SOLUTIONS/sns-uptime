@@ -62,6 +62,47 @@ L'application est désormais accessible à l'adresse ``http://monip:3001``
 
 Il vous sera demandé de choisir comment configurer la base de données. Il est recommandé d'utiliser SQLite, mais si vous souhaitez l'ajouter sur MySQL, c'est possible.
 
+## Acquittement des incidents
+
+Quand une sonde tombe, n'importe qui dans l'équipe peut **acquitter** l'incident depuis sa
+page de détail : ça revient à dire « je m'en occupe ».
+
+Concrètement :
+
+- les **rappels s'arrêtent** — plus de renotification toutes les X minutes tant que la panne
+  dure, puisque quelqu'un est déjà dessus ;
+- la sonde passe en **violet** au lieu de rouge, dans la liste comme sur sa page ;
+- une colonne **Acquitté** apparaît dans les statistiques rapides du tableau de bord. Une
+  sonde acquittée sort du compteur « Down », qui ne montre donc plus que ce qui attend
+  réellement quelqu'un ;
+- toute l'équipe voit **qui** a pris l'incident et **quand**, en direct.
+
+L'identité vient du fournisseur d'identité : c'est le nom et l'adresse transmis par Authentik
+qui sont enregistrés. Ça fonctionne même en mode `shared`, où tout le monde partage le même
+compte local — l'acquittement appartient à la personne, pas au compte.
+
+### Prévenir la personne au rétablissement
+
+Dès que la sonde repasse au vert, l'acquittement se referme tout seul et **la personne qui
+l'avait pris reçoit un mail**, à son adresse à elle. Pas besoin de créer une notification par
+collaborateur : dans **Réglages → Notifications → Acquittement**, choisissez une notification
+SMTP existante. Seul le destinataire est remplacé au moment de l'envoi, le serveur et
+l'expéditeur restent les vôtres.
+
+Si aucune notification n'est choisie, tout le reste fonctionne, simplement personne n'est
+prévenu individuellement.
+
+### Bon à savoir
+
+- Seule une sonde réellement en panne (DOWN ou PENDING) peut être acquittée.
+- Un acquittement ne couvre que la panne en cours. Si la sonde retombe plus tard, il faut
+  l'acquitter à nouveau — sinon une nouvelle panne passerait inaperçue.
+- « Rendre la main » lève l'acquittement sans attendre le rétablissement, et les rappels
+  reprennent.
+- Mettre une sonde en pause lève aussi son acquittement.
+- La notification de retour à la normale destinée à toute l'équipe continue de partir
+  normalement : le mail à la personne qui a acquitté s'ajoute, il ne remplace rien.
+
 ## Groupes « Dossier uniquement »
 
 Par défaut dans Uptime Kuma, un groupe est une sonde à part entière : il produit ses propres

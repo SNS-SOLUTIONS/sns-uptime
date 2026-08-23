@@ -183,6 +183,10 @@ export default {
                     this.settings.trustProxy = false;
                 }
 
+                if (this.settings.acknowledgementNotificationID === undefined) {
+                    this.settings.acknowledgementNotificationID = null;
+                }
+
                 this.settingsLoaded = true;
             });
         },

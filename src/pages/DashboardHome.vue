@@ -26,6 +26,15 @@
                         </span>
                     </div>
                     <div class="col">
+                        <h3>{{ $t("Acknowledged") }}</h3>
+                        <span
+                            class="num"
+                            :class="$root.stats.acknowledged > 0 ? 'text-acknowledged' : 'text-secondary'"
+                        >
+                            {{ $root.stats.acknowledged }}
+                        </span>
+                    </div>
+                    <div class="col">
                         <h3>{{ $t("Maintenance") }}</h3>
                         <span
                             class="num"

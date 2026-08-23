@@ -53,6 +53,7 @@ export default {
             notificationList: [],
             dockerHostList: [],
             remoteBrowserList: [],
+            acknowledgementList: {},
             statusPageListLoaded: false,
             statusPageList: [],
             proxyList: [],
@@ -223,6 +224,10 @@ export default {
 
             socket.on("remoteBrowserList", (data) => {
                 this.remoteBrowserList = data;
+            });
+
+            socket.on("acknowledgementList", (data) => {
+                this.acknowledgementList = data;
             });
 
             socket.on("heartbeat", (data) => {
@@ -460,6 +465,7 @@ export default {
             this.loggedIn = false;
             this.username = null;
             this.userProfile = null;
+            this.acknowledgementList = {};
             this.forwardAuth.active = false;
             this.forwardAuth.logoutURL = null;
             this.clearData();
@@ -469,6 +475,26 @@ export default {
             if (forwardAuthLogoutURL) {
                 location.href = forwardAuthLogoutURL;
             }
+        },
+
+        /**
+         * Take responsibility for an ongoing incident
+         * @param {number} monitorID ID of the monitor to acknowledge
+         * @param {socketCB} callback Callback for socket response
+         * @returns {void}
+         */
+        acknowledgeMonitor(monitorID, callback) {
+            socket.emit("acknowledgeMonitor", monitorID, callback);
+        },
+
+        /**
+         * Hand an acknowledged incident back to the team
+         * @param {number} monitorID ID of the monitor to release
+         * @param {socketCB} callback Callback for socket response
+         * @returns {void}
+         */
+        unacknowledgeMonitor(monitorID, callback) {
+            socket.emit("unacknowledgeMonitor", monitorID, callback);
         },
 
         /**
@@ -837,6 +863,7 @@ export default {
                 active: 0,
                 up: 0,
                 down: 0,
+                acknowledged: 0,
                 maintenance: 0,
                 pending: 0,
                 unknown: 0,
@@ -856,7 +883,10 @@ export default {
                     result.pause++;
                 } else if (beat) {
                     result.active++;
-                    if (beat.status === UP) {
+                    if (this.$root.acknowledgementList[monitorID] && (beat.status === DOWN || beat.status === PENDING)) {
+                        // Someone is already on it, it is not waiting for anyone
+                        result.acknowledged++;
+                    } else if (beat.status === UP) {
                         result.up++;
                     } else if (beat.status === DOWN) {
                         result.down++;

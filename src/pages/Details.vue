@@ -66,6 +66,14 @@
                     <router-link :to=" '/clone/' + monitor.id " class="btn btn-normal">
                         <font-awesome-icon icon="clone" /> {{ $t("Clone") }}
                     </router-link>
+                    <button
+                        v-if="canAcknowledge"
+                        class="btn btn-normal"
+                        :disabled="processingAcknowledgement"
+                        @click="acknowledge"
+                    >
+                        <font-awesome-icon icon="user-check" /> {{ $t("Acknowledge") }}
+                    </button>
                     <button class="btn btn-normal text-danger" @click="deleteDialog">
                         <font-awesome-icon icon="trash" /> {{ $t("Delete") }}
                     </button>
@@ -84,7 +92,26 @@
                         </span>
                     </div>
                     <div class="col-md-4 text-center">
-                        <span class="badge rounded-pill" :class=" 'bg-' + status.color " style="font-size: 30px;">{{ status.text }}</span>
+                        <span class="badge rounded-pill" :class="acknowledgement ? 'bg-acknowledged' : 'bg-' + status.color" style="font-size: 30px;">
+                            {{ acknowledgement ? $t("Acknowledged") : status.text }}
+                        </span>
+                    </div>
+                </div>
+
+                <!-- Who is on it -->
+                <div v-if="acknowledgement" class="row mt-3">
+                    <div class="col-12 acknowledgement-bar">
+                        <span>
+                            <font-awesome-icon icon="user-check" class="text-acknowledged" />
+                            <i18n-t tag="span" keypath="acknowledgedBy" class="ms-2">
+                                <strong>{{ acknowledgement.displayName }}</strong>
+                                <Datetime :value="acknowledgement.createdDate" />
+                            </i18n-t>
+                            <span v-if="acknowledgement.email" class="text-secondary ms-2">({{ acknowledgement.email }})</span>
+                        </span>
+                        <button class="btn btn-normal btn-sm" :disabled="processingAcknowledgement" @click="unacknowledge">
+                            {{ $t("Release") }}
+                        </button>
                     </div>
                 </div>
             </div>
@@ -288,7 +315,7 @@ import Pagination from "v-pagination-3";
 const PingChart = defineAsyncComponent(() => import("../components/PingChart.vue"));
 import Tag from "../components/Tag.vue";
 import CertificateInfo from "../components/CertificateInfo.vue";
-import { getMonitorRelativeURL } from "../util.ts";
+import { DOWN, PENDING, getMonitorRelativeURL } from "../util.ts";
 import { URL } from "whatwg-url";
 import { getResBaseURL } from "../util-frontend";
 import { highlight, languages } from "prismjs/components/prism-core";
@@ -318,6 +345,7 @@ export default {
         return {
             page: 1,
             perPage: 25,
+            processingAcknowledgement: false,
             heartBeatList: [],
             toggleCertInfoBox: false,
             showPingChartBox: true,
@@ -377,6 +405,28 @@ export default {
             }
 
             return { };
+        },
+
+        /**
+         * @returns {?object} The acknowledgement covering this monitor, if any
+         */
+        acknowledgement() {
+            return this.$root.acknowledgementList[this.monitor.id] || null;
+        },
+
+        /**
+         * Acknowledging is only meaningful during an ongoing incident that
+         * nobody has taken yet.
+         * @returns {boolean} Should the acknowledge button be offered?
+         */
+        canAcknowledge() {
+            if (this.acknowledgement || this.monitor.folderOnly || ! this.monitor.active) {
+                return false;
+            }
+
+            const status = this.$root.lastHeartbeatList[this.monitor.id]?.status;
+
+            return status === DOWN || status === PENDING;
         },
 
         tlsInfo() {
@@ -444,6 +494,30 @@ export default {
 
     methods: {
         getResBaseURL,
+        /**
+         * Take responsibility for the ongoing incident
+         * @returns {void}
+         */
+        acknowledge() {
+            this.processingAcknowledgement = true;
+            this.$root.acknowledgeMonitor(this.monitor.id, (res) => {
+                this.processingAcknowledgement = false;
+                this.$root.toastRes(res);
+            });
+        },
+
+        /**
+         * Hand the incident back to the team
+         * @returns {void}
+         */
+        unacknowledge() {
+            this.processingAcknowledgement = true;
+            this.$root.unacknowledgeMonitor(this.monitor.id, (res) => {
+                this.processingAcknowledgement = false;
+                this.$root.toastRes(res);
+            });
+        },
+
         /**
          * Request a test notification be sent for this monitor
          * @returns {void}
@@ -668,6 +742,14 @@ export default {
 
 <style lang="scss" scoped>
 @import "../assets/vars.scss";
+
+.acknowledgement-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: center;
+    justify-content: space-between;
+}
 
 @media (max-width: 767px) {
     .badge {

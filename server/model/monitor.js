@@ -19,6 +19,7 @@ const Gamedig = require("gamedig");
 const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
 const { UptimeCalculator } = require("../uptime-calculator");
+const Acknowledgement = require("../acknowledgement");
 const { CookieJar } = require("tough-cookie");
 const { HttpsCookieAgent } = require("http-cookie-agent/http");
 const https = require("https");
@@ -955,6 +956,11 @@ class Monitor extends BeanModel {
                 // Reset down count
                 bean.downCount = 0;
 
+                // An acknowledgement only covers the outage it was taken for
+                if (bean.status === UP) {
+                    await Acknowledgement.resolve(this, bean, io);
+                }
+
                 // Clear Status Page Cache
                 log.debug("monitor", `[${this.name}] apicache clear`);
                 apicache.clear();
@@ -967,9 +973,14 @@ class Monitor extends BeanModel {
                 if (bean.status === DOWN && this.resendInterval > 0) {
                     ++bean.downCount;
                     if (bean.downCount >= this.resendInterval) {
-                        // Send notification again, because we are still DOWN
-                        log.debug("monitor", `[${this.name}] sendNotification again: Down Count: ${bean.downCount} | Resend Interval: ${this.resendInterval}`);
-                        await Monitor.sendNotification(isFirstBeat, this, bean);
+                        if (await Acknowledgement.isAcknowledged(this.id)) {
+                            // Someone took the incident, no need to keep ringing
+                            log.debug("monitor", `[${this.name}] acknowledged, skipping the reminder`);
+                        } else {
+                            // Send notification again, because we are still DOWN
+                            log.debug("monitor", `[${this.name}] sendNotification again: Down Count: ${bean.downCount} | Resend Interval: ${this.resendInterval}`);
+                            await Monitor.sendNotification(isFirstBeat, this, bean);
+                        }
 
                         // Reset down count
                         bean.downCount = 0;

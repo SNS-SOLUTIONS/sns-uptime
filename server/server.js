@@ -107,6 +107,7 @@ const { loginRateLimiter, twoFaRateLimiter } = require("./rate-limiter");
 const { apiAuth } = require("./auth");
 const { login } = require("./auth");
 const { forwardAuth } = require("./forward-auth");
+const Acknowledgement = require("./acknowledgement");
 const passwordHash = require("./password-hash");
 
 const hostname = config.hostname;
@@ -456,6 +457,7 @@ let needSetup = false;
 
             socket.leave(socket.userID);
             socket.userID = null;
+            socket.profile = null;
 
             if (typeof callback === "function") {
                 callback();
@@ -976,11 +978,57 @@ let needSetup = false;
             try {
                 checkLogin(socket);
                 await pauseMonitor(socket.userID, monitorID);
+                await Acknowledgement.clear(monitorID);
+                await Acknowledgement.sendList(io, socket.userID);
                 await server.sendMonitorList(socket);
 
                 callback({
                     ok: true,
                     msg: "successPaused",
+                    msgi18n: true,
+                });
+
+            } catch (e) {
+                callback({
+                    ok: false,
+                    msg: e.message,
+                });
+            }
+        });
+
+        socket.on("acknowledgeMonitor", async (monitorID, callback) => {
+            try {
+                checkLogin(socket);
+                await checkOwner(socket.userID, monitorID);
+
+                await Acknowledgement.acknowledge(monitorID, socket.profile);
+                await Acknowledgement.sendList(io, socket.userID);
+
+                callback({
+                    ok: true,
+                    msg: "acknowledgedIncident",
+                    msgi18n: true,
+                });
+
+            } catch (e) {
+                callback({
+                    ok: false,
+                    msg: e.message,
+                });
+            }
+        });
+
+        socket.on("unacknowledgeMonitor", async (monitorID, callback) => {
+            try {
+                checkLogin(socket);
+                await checkOwner(socket.userID, monitorID);
+
+                await Acknowledgement.clear(monitorID);
+                await Acknowledgement.sendList(io, socket.userID);
+
+                callback({
+                    ok: true,
+                    msg: "unacknowledgedIncident",
                     msgi18n: true,
                 });
 
@@ -1663,7 +1711,10 @@ async function afterLogin(socket, user, profile = null) {
     socket.userID = user.id;
     socket.join(user.id);
 
-    socket.emit("userProfile", profile ?? user.toPublicJSON());
+    // Who is behind this session. Under forward auth several people share one
+    // account, so this is what tells them apart when they acknowledge an incident.
+    socket.profile = profile ?? user.toPublicJSON();
+    socket.emit("userProfile", socket.profile);
 
     let monitorList = await server.sendMonitorList(socket);
     await Promise.allSettled([
@@ -1674,6 +1725,7 @@ async function afterLogin(socket, user, profile = null) {
         sendDockerHostList(socket),
         sendAPIKeyList(socket),
         sendRemoteBrowserList(socket),
+        Acknowledgement.sendList(io, user.id),
     ]);
 
     await StatusPage.sendStatusPageList(io, socket);
