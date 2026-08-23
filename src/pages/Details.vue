@@ -75,8 +75,13 @@
             <div class="shadow-box">
                 <div class="row">
                     <div class="col-md-8">
-                        <HeartbeatBar :monitor-id="monitor.id" />
-                        <span class="word">{{ $t("checkEverySecond", [ monitor.interval ]) }}</span>
+                        <template v-if="! monitor.folderOnly">
+                            <HeartbeatBar :monitor-id="monitor.id" />
+                            <span class="word">{{ $t("checkEverySecond", [ monitor.interval ]) }}</span>
+                        </template>
+                        <span v-else class="word">
+                            <font-awesome-icon icon="folder" /> {{ $t("Folder Only") }}
+                        </span>
                     </div>
                     <div class="col-md-4 text-center">
                         <span class="badge rounded-pill" :class=" 'bg-' + status.color " style="font-size: 30px;">{{ status.text }}</span>
@@ -113,7 +118,7 @@
             </div>
 
             <!-- Stats -->
-            <div class="shadow-box big-padding text-center stats">
+            <div v-if="! monitor.folderOnly" class="shadow-box big-padding text-center stats">
                 <div class="row">
                     <div v-if="monitor.type !== 'group'" class="col-12 col-sm col row d-flex align-items-center d-sm-block">
                         <h4 class="col-4 col-sm-12">{{ pingTitle() }}</h4>

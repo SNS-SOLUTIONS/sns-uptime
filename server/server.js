@@ -693,6 +693,7 @@ let needSetup = false;
 
                 bean.import(monitor);
                 bean.user_id = socket.userID;
+                bean.folderOnly = monitor.type === "group" && !!monitor.folderOnly;
 
                 bean.validate();
 
@@ -760,6 +761,7 @@ let needSetup = false;
                 bean.description = monitor.description;
                 bean.parent = monitor.parent;
                 bean.type = monitor.type;
+                bean.folderOnly = monitor.type === "group" && !!monitor.folderOnly;
                 bean.url = monitor.url;
                 bean.method = monitor.method;
                 bean.body = monitor.body;

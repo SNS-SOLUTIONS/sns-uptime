@@ -847,6 +847,11 @@ export default {
                 let beat = this.$root.lastHeartbeatList[monitorID];
                 let monitor = this.$root.monitorList[monitorID];
 
+                // A folder is not a probe, it must not weigh on the counters
+                if (monitor && monitor.folderOnly) {
+                    continue;
+                }
+
                 if (monitor && ! monitor.active) {
                     result.pause++;
                 } else if (beat) {

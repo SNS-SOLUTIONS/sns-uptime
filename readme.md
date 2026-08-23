@@ -62,6 +62,30 @@ L'application est désormais accessible à l'adresse ``http://monip:3001``
 
 Il vous sera demandé de choisir comment configurer la base de données. Il est recommandé d'utiliser SQLite, mais si vous souhaitez l'ajouter sur MySQL, c'est possible.
 
+## Groupes « Dossier uniquement »
+
+Par défaut dans Uptime Kuma, un groupe est une sonde à part entière : il produit ses propres
+battements, alerte quand un de ses enfants tombe, et compte dans les statistiques. Résultat,
+une seule panne déclenche deux notifications — celle de la sonde, puis celle de son groupe.
+
+L'option **Dossier uniquement**, disponible à l'édition d'un groupe, le ramène à ce qu'on
+attend d'un dossier :
+
+- il **n'envoie jamais de notification**, quelles que soient celles qui lui sont associées ;
+- il **n'apparaît pas** dans les compteurs Up / Down / Pause du tableau de bord ;
+- il **n'affiche ni pourcentage de disponibilité, ni barre de battements**.
+
+Il continue en revanche d'afficher l'état combiné de son contenu : l'icône de dossier prend
+la couleur du pire état parmi ses enfants, ce qui permet de repérer un problème d'un coup
+d'œil sans déplier l'arborescence. Les groupes imbriqués continuent donc de fonctionner.
+
+### Migration
+
+Les groupes qui existaient déjà sont **basculés automatiquement** en « Dossier uniquement »
+à la première mise à jour, sans action de votre part. Les nouveaux groupes le sont aussi par
+défaut. Si vous voulez qu'un groupe précis se comporte à nouveau comme une sonde (alertes et
+statistiques comprises), décochez la case dans son écran d'édition.
+
 ## Authentification via Authentik (forward auth)
 
 SNS Uptime sait déléguer l'authentification à un fournisseur d'identité placé devant lui
