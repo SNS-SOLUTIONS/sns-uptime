@@ -5,6 +5,7 @@ const { setting } = require("./util-server");
 const { log } = require("../src/util");
 const { loginRateLimiter, apiRateLimiter } = require("./rate-limiter");
 const { Settings } = require("./settings");
+const { forwardAuth } = require("./forward-auth");
 const dayjs = require("dayjs");
 
 /**
@@ -126,6 +127,22 @@ function userAuthorizer(username, password, callback) {
 }
 
 /**
+ * Check whether the request was already authenticated by a trusted identity
+ * provider sitting in front of Uptime Kuma (forward auth)
+ * @param {express.Request} req Express request object
+ * @returns {Promise<boolean>} Is the request authenticated by the identity provider?
+ */
+async function passedForwardAuth(req) {
+    const result = await forwardAuth.authenticateHeaders(req.headers, req.socket?.remoteAddress);
+
+    if (result && !result.ok) {
+        log.warn("forward-auth", `Failed forward auth attempt on ${req.originalUrl}: ${result.msg}`);
+    }
+
+    return result?.ok === true;
+}
+
+/**
  * Use basic auth if auth is not disabled
  * @param {express.Request} req Express request object
  * @param {express.Response} res Express response object
@@ -141,10 +158,10 @@ exports.basicAuth = async function (req, res, next) {
 
     const disabledAuth = await setting("disableAuth");
 
-    if (!disabledAuth) {
-        middleware(req, res, next);
-    } else {
+    if (disabledAuth || await passedForwardAuth(req)) {
         next();
+    } else {
+        middleware(req, res, next);
     }
 };
 
@@ -156,24 +173,25 @@ exports.basicAuth = async function (req, res, next) {
  * @returns {Promise<void>}
  */
 exports.apiAuth = async function (req, res, next) {
-    if (!await Settings.get("disableAuth")) {
-        let usingAPIKeys = await Settings.get("apiKeysEnabled");
-        let middleware;
-        if (usingAPIKeys) {
-            middleware = basicAuth({
-                authorizer: apiAuthorizer,
-                authorizeAsync: true,
-                challenge: true,
-            });
-        } else {
-            middleware = basicAuth({
-                authorizer: userAuthorizer,
-                authorizeAsync: true,
-                challenge: true,
-            });
-        }
-        middleware(req, res, next);
-    } else {
+    if (await Settings.get("disableAuth") || await passedForwardAuth(req)) {
         next();
+        return;
     }
+
+    let usingAPIKeys = await Settings.get("apiKeysEnabled");
+    let middleware;
+    if (usingAPIKeys) {
+        middleware = basicAuth({
+            authorizer: apiAuthorizer,
+            authorizeAsync: true,
+            challenge: true,
+        });
+    } else {
+        middleware = basicAuth({
+            authorizer: userAuthorizer,
+            authorizeAsync: true,
+            challenge: true,
+        });
+    }
+    middleware(req, res, next);
 };

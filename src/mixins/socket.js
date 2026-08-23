@@ -34,6 +34,12 @@ export default {
                 initedSocketIO: false,
             },
             username: null,
+            userProfile: null,
+            forwardAuth: {
+                active: false,
+                logoutURL: null,
+                error: null,
+            },
             remember: (localStorage.remember !== "0"),
             allowLoginDialog: false,        // Allowed to show login dialog, but "loggedIn" have to be true too. This exists because prevent the login dialog show 0.1s in first before the socket server auth-ed.
             loggedIn: false,
@@ -127,9 +133,40 @@ export default {
                 this.storage().token = "autoLogin";
                 this.socket.token = "autoLogin";
                 this.allowLoginDialog = false;
+
+                // Authentication is disabled, there is no user to show
+                this.userProfile = null;
+                this.username = null;
+            });
+
+            // The reverse proxy in front of us (e.g. Authentik) already
+            // authenticated the user, there is no login form to show.
+            socket.on("forwardAuthLogin", (profile) => {
+                this.loggedIn = true;
+                this.allowLoginDialog = false;
+                this.socket.token = "forwardAuth";
+                this.forwardAuth.active = true;
+                this.forwardAuth.logoutURL = profile.logoutURL;
+                this.forwardAuth.error = null;
+
+                // Any leftover JWT is meaningless now, the identity provider owns the session
+                this.storage().removeItem("token");
+            });
+
+            socket.on("forwardAuthFailed", (res) => {
+                this.forwardAuth.error = res.msgi18n ? this.$t(res.msg) : res.msg;
+            });
+
+            socket.on("userProfile", (profile) => {
+                this.userProfile = profile;
+                this.username = profile.username;
             });
 
             socket.on("loginRequired", () => {
+                if (this.loggedIn) {
+                    return;
+                }
+
                 let token = this.storage().token;
                 if (token && token !== "autoLogin") {
                     this.loginByToken(token);
@@ -415,12 +452,23 @@ export default {
          * @returns {void}
          */
         logout() {
+            const forwardAuthLogoutURL = this.forwardAuth.active ? this.forwardAuth.logoutURL : null;
+
             socket.emit("logout", () => { });
             this.storage().removeItem("token");
             this.socket.token = null;
             this.loggedIn = false;
             this.username = null;
+            this.userProfile = null;
+            this.forwardAuth.active = false;
+            this.forwardAuth.logoutURL = null;
             this.clearData();
+
+            // Signing out locally is not enough, the identity provider would log
+            // us straight back in on the next request.
+            if (forwardAuthLogoutURL) {
+                location.href = forwardAuthLogoutURL;
+            }
         },
 
         /**
@@ -688,9 +736,45 @@ export default {
 
     computed: {
 
+        /**
+         * Name to show for the logged in user, provided by the identity
+         * provider when forward auth is used, the username otherwise
+         * @returns {?string} Display name of the current user
+         */
+        displayName() {
+            return this.userProfile?.displayName || this.username;
+        },
+
+        /**
+         * @returns {?string} Email of the current user, if it is known
+         */
+        userEmail() {
+            return this.userProfile?.email || null;
+        },
+
+        /**
+         * Logging out is pointless when there is nothing to log out from: with
+         * authentication disabled, or under forward auth without a sign out URL
+         * for the identity provider, which would log us straight back in.
+         * @returns {boolean} Should the logout button be offered?
+         */
+        canLogout() {
+            if (!this.loggedIn || this.socket.token === "autoLogin") {
+                return false;
+            }
+
+            if (this.forwardAuth.active) {
+                return !!this.forwardAuth.logoutURL;
+            }
+
+            return true;
+        },
+
         usernameFirstChar() {
-            if (typeof this.username == "string" && this.username.length >= 1) {
-                return this.username.charAt(0).toUpperCase();
+            const name = this.displayName;
+
+            if (typeof name === "string" && name.length >= 1) {
+                return name.charAt(0).toUpperCase();
             } else {
                 return "🐻";
             }

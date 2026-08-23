@@ -40,12 +40,16 @@
 
                         <!-- Header's Dropdown Menu -->
                         <ul class="dropdown-menu">
-                            <!-- Username -->
+                            <!-- Current user -->
                             <li>
-                                <i18n-t v-if="$root.username != null" tag="span" keypath="signedInDisp" class="dropdown-item-text">
-                                    <strong>{{ $root.username }}</strong>
-                                </i18n-t>
-                                <span v-if="$root.username == null" class="dropdown-item-text">{{ $t("signedInDispDisabled") }}</span>
+                                <div v-if="$root.username != null" class="dropdown-item-text user-identity">
+                                    <span class="user-name">{{ $root.displayName }}</span>
+                                    <span v-if="$root.userEmail" class="user-email">{{ $root.userEmail }}</span>
+                                    <span v-if="$root.forwardAuth.active" class="user-provider">
+                                        <font-awesome-icon icon="shield-alt" /> {{ $t("signedInWithForwardAuth") }}
+                                    </span>
+                                </div>
+                                <span v-else class="dropdown-item-text">{{ $t("signedInDispDisabled") }}</span>
                             </li>
 
                             <li><hr class="dropdown-divider"></li>
@@ -69,7 +73,7 @@
                                 </a>
                             </li>
 
-                            <li v-if="$root.loggedIn && $root.socket.token !== 'autoLogin'">
+                            <li v-if="$root.canLogout">
                                 <button class="dropdown-item" @click="$root.logout">
                                     <font-awesome-icon icon="sign-out-alt" />
                                     {{ $t("Logout") }}
@@ -320,6 +324,29 @@ main {
         .dropdown-item-text {
             font-size: 14px;
             padding-bottom: 0.7rem;
+        }
+
+        .user-identity {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+            max-width: 260px;
+
+            .user-name {
+                font-weight: bold;
+            }
+
+            .user-email,
+            .user-provider {
+                font-size: 12px;
+                opacity: 0.7;
+                overflow: hidden;
+                text-overflow: ellipsis;
+            }
+
+            .user-provider {
+                margin-top: 2px;
+            }
         }
 
         .dropdown-item {

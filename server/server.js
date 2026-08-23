@@ -106,6 +106,7 @@ const { loginRateLimiter, twoFaRateLimiter } = require("./rate-limiter");
 
 const { apiAuth } = require("./auth");
 const { login } = require("./auth");
+const { forwardAuth } = require("./forward-auth");
 const passwordHash = require("./password-hash");
 
 const hostname = config.hostname;
@@ -297,7 +298,11 @@ let needSetup = false;
 
         await sendInfo(socket, true);
 
-        if (needSetup) {
+        // Resolve the identity injected by the reverse proxy (e.g. Authentik) now,
+        // so that a forward auth user is not sent to the setup page first.
+        const forwardAuthResult = await forwardAuth.authenticate(socket);
+
+        if (needSetup && !forwardAuthResult?.ok) {
             log.info("server", "Redirect to setup page");
             socket.emit("setup");
         }
@@ -1547,6 +1552,27 @@ let needSetup = false;
             log.info("auth", "Disabled Auth: auto login to admin");
             await afterLogin(socket, await R.findOne("user"));
             socket.emit("autoLogin");
+        } else if (forwardAuthResult) {
+            const clientIP = await server.getClientIP(socket);
+
+            if (forwardAuthResult.ok) {
+                // The identity provider in front of us already authenticated the
+                // user, there is nothing left to check here.
+                needSetup = false;
+
+                await afterLogin(socket, forwardAuthResult.user, forwardAuthResult.profile);
+                socket.emit("forwardAuthLogin", forwardAuth.toClientPayload(forwardAuthResult.profile));
+
+                log.info("auth", `Successfully logged in user ${forwardAuthResult.profile.username} using forward auth. IP=${clientIP}`);
+            } else {
+                log.warn("auth", `Forward auth failed: ${forwardAuthResult.msg}. IP=${clientIP}`);
+
+                socket.emit("forwardAuthFailed", {
+                    msg: forwardAuthResult.msg,
+                    msgi18n: forwardAuthResult.msgi18n,
+                });
+                socket.emit("loginRequired");
+            }
         } else {
             socket.emit("loginRequired");
             log.debug("auth", "need auth");
@@ -1626,11 +1652,16 @@ async function checkOwner(userID, monitorID) {
  * This function is used to send the heartbeat list of a monitor.
  * @param {Socket} socket Socket.io instance
  * @param {object} user User object
+ * @param {?object} profile Profile to show for this session, defaults to the
+ * profile of the account itself. Forward auth uses it so that people sharing an
+ * account still see their own identity.
  * @returns {Promise<void>}
  */
-async function afterLogin(socket, user) {
+async function afterLogin(socket, user, profile = null) {
     socket.userID = user.id;
     socket.join(user.id);
+
+    socket.emit("userProfile", profile ?? user.toPublicJSON());
 
     let monitorList = await server.sendMonitorList(socket);
     await Promise.allSettled([

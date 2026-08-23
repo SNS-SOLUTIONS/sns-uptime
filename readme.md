@@ -62,6 +62,141 @@ L'application est désormais accessible à l'adresse ``http://monip:3001``
 
 Il vous sera demandé de choisir comment configurer la base de données. Il est recommandé d'utiliser SQLite, mais si vous souhaitez l'ajouter sur MySQL, c'est possible.
 
+## Authentification via Authentik (forward auth)
+
+SNS Uptime sait déléguer l'authentification à un fournisseur d'identité placé devant lui
+(Authentik, Authelia, oauth2-proxy…). Le reverse proxy authentifie la personne, puis
+transmet son identité à l'application via des en-têtes HTTP. Le nom et l'adresse e-mail
+de l'utilisateur connecté sont affichés dans le menu de profil de l'application.
+
+### Principe
+
+```
+Navigateur ──▶ Reverse proxy ──▶ Authentik (outpost)   « qui es-tu ? »
+                    │
+                    └──▶ SNS Uptime   + X-authentik-username / -email / -name / -groups
+```
+
+Aucun second écran de connexion n'est présenté : dès que les en-têtes sont présents et
+proviennent d'un proxy de confiance, la session est ouverte automatiquement.
+
+### ⚠️ Prérequis de sécurité
+
+Ces deux points sont **obligatoires**, sans eux n'importe qui peut se faire passer pour
+n'importe quel utilisateur :
+
+1. **SNS Uptime ne doit pas être joignable directement.** Le port 3001 ne doit être exposé
+   qu'au reverse proxy (retirez la publication de port dans `compose.yaml` et placez les deux
+   conteneurs sur le même réseau Docker).
+2. **Le reverse proxy doit écraser les en-têtes `X-authentik-*` envoyés par le client.**
+   C'est le comportement par défaut de `authResponseHeaders` (Traefik) et de
+   `auth_request_set` (nginx), mais vérifiez-le.
+
+Par sécurité, l'application n'accepte ces en-têtes que si la connexion provient d'une plage
+d'adresses de confiance (par défaut les réseaux privés, voir `UPTIME_KUMA_FORWARD_AUTH_TRUSTED_PROXIES`).
+
+### Configuration
+
+Toutes les options se règlent par variables d'environnement :
+
+| Variable | Défaut | Description |
+| --- | --- | --- |
+| `UPTIME_KUMA_FORWARD_AUTH_ENABLED` | `false` | Active le forward auth. |
+| `UPTIME_KUMA_FORWARD_AUTH_MODE` | `shared` | `shared` : tout le monde partage le compte principal et voit donc les mêmes moniteurs. `per-user` : un compte local par utilisateur, chacun avec ses propres moniteurs. |
+| `UPTIME_KUMA_FORWARD_AUTH_TRUSTED_PROXIES` | réseaux privés | Liste d'IP/CIDR autorisés à envoyer les en-têtes, séparés par des virgules. `*` pour tout accepter (à réserver aux cas où l'application est réellement inaccessible sans le proxy). |
+| `UPTIME_KUMA_FORWARD_AUTH_ALLOWED_GROUPS` | *(vide)* | Restreint l'accès aux membres de ces groupes. Vide = tout utilisateur authentifié par Authentik. |
+| `UPTIME_KUMA_FORWARD_AUTH_AUTO_CREATE` | `true` | En mode `per-user`, crée le compte local à la première connexion. |
+| `UPTIME_KUMA_FORWARD_AUTH_LOGOUT_URL` | `/outpost.goauthentik.io/sign_out` | Cible du bouton « Déconnexion ». Laisser vide pour une déconnexion locale uniquement. |
+| `UPTIME_KUMA_FORWARD_AUTH_USER_HEADER` | `X-authentik-username` | En-tête portant l'identifiant. |
+| `UPTIME_KUMA_FORWARD_AUTH_EMAIL_HEADER` | `X-authentik-email` | En-tête portant l'e-mail. |
+| `UPTIME_KUMA_FORWARD_AUTH_NAME_HEADER` | `X-authentik-name` | En-tête portant le nom affiché. |
+| `UPTIME_KUMA_FORWARD_AUTH_GROUPS_HEADER` | `X-authentik-groups` | En-tête portant les groupes. |
+
+Le nom et l'e-mail sont resynchronisés depuis Authentik à chaque connexion : c'est le
+fournisseur d'identité qui fait autorité.
+
+### Côté Authentik
+
+1. Créer un **Provider** de type *Proxy Provider*, mode **Forward auth (single application)**,
+   avec comme *External host* l'URL publique de SNS Uptime.
+2. Créer l'**Application** correspondante et la lier à ce provider.
+3. Ajouter l'application à un **Outpost** (l'outpost intégré convient).
+
+### Exemple avec Traefik
+
+`compose.yaml` :
+
+```yaml
+services:
+  uptime-kuma:
+    image: ghcr.io/sns-solutions/sns-uptime:main
+    platform: linux/x86_64
+    volumes:
+      - ./data:/app/data
+    # Pas de section "ports": l'accès se fait uniquement via le proxy
+    environment:
+      UPTIME_KUMA_FORWARD_AUTH_ENABLED: "true"
+      UPTIME_KUMA_FORWARD_AUTH_ALLOWED_GROUPS: "uptime-admins"
+    restart: unless-stopped
+    networks:
+      - proxy
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.uptime.rule: "Host(`uptime.example.com`)"
+      traefik.http.routers.uptime.middlewares: "authentik@docker"
+      traefik.http.services.uptime.loadbalancer.server.port: "3001"
+
+networks:
+  proxy:
+    external: true
+```
+
+Le middleware `authentik` (à déclarer une seule fois sur votre outpost) :
+
+```yaml
+labels:
+  traefik.http.middlewares.authentik.forwardauth.address: "http://authentik-outpost:9000/outpost.goauthentik.io/auth/traefik"
+  traefik.http.middlewares.authentik.forwardauth.trustForwardHeader: "true"
+  traefik.http.middlewares.authentik.forwardauth.authResponseHeaders: "X-authentik-username,X-authentik-groups,X-authentik-email,X-authentik-name,X-authentik-uid"
+```
+
+### Exemple avec nginx
+
+```nginx
+location / {
+    auth_request /outpost.goauthentik.io/auth/nginx;
+    error_page 401 = @goauthentik_proxy_signin;
+
+    auth_request_set $authentik_username $upstream_http_x_authentik_username;
+    auth_request_set $authentik_email    $upstream_http_x_authentik_email;
+    auth_request_set $authentik_name     $upstream_http_x_authentik_name;
+    auth_request_set $authentik_groups   $upstream_http_x_authentik_groups;
+
+    proxy_set_header X-authentik-username $authentik_username;
+    proxy_set_header X-authentik-email    $authentik_email;
+    proxy_set_header X-authentik-name     $authentik_name;
+    proxy_set_header X-authentik-groups   $authentik_groups;
+
+    # Nécessaire pour le temps réel (WebSocket)
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade    $http_upgrade;
+    proxy_set_header Connection "upgrade";
+
+    proxy_pass http://uptime-kuma:3001;
+}
+```
+
+### Bon à savoir
+
+- Le formulaire de connexion classique reste disponible si la requête n'a pas transité par
+  Authentik, ce qui permet de garder un accès de secours en local.
+- Quand le forward auth est actif, le changement de mot de passe et la double authentification
+  sont masqués dans les réglages : ils se gèrent dans Authentik.
+- Le bouton « Déconnexion » redirige vers la déconnexion d'Authentik, sinon la session serait
+  immédiatement rouverte.
+- Prometheus ne peut plus lire `/metrics` s'il passe par le proxy : excluez cette route du
+  forward auth, ou continuez à utiliser une clé d'API.
+
 ## Mise a jour de l'application
 Pour mettre à jour l'application, exécutez les commandes suivantes.
 ```bash
