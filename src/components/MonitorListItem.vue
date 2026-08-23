@@ -56,6 +56,8 @@
                     :isSelected="isSelected"
                     :select="select"
                     :deselect="deselect"
+                    :filter-func="filterFunc"
+                    :sort-func="sortFunc"
                     :depth="depth + 1"
                 />
             </div>
@@ -175,6 +177,12 @@ export default {
             // this.$refs.heartbeatBar.resize();
         }
     },
+    mounted() {
+        this.$root.emitter.on("monitorCollapsedAll", this.applyCollapsedAll);
+    },
+    beforeUnmount() {
+        this.$root.emitter.off("monitorCollapsedAll", this.applyCollapsedAll);
+    },
     beforeMount() {
 
         // Always unfold if monitor is accessed directly
@@ -214,6 +222,24 @@ export default {
             storageObject[`monitor_${this.monitor.id}`] = this.isCollapsed;
 
             window.localStorage.setItem("monitorCollapsed", JSON.stringify(storageObject));
+
+            // Let the list know, so its expand / collapse all button stays accurate
+            this.$root.emitter.emit("monitorCollapsedChanged", {
+                id: this.monitor.id,
+                collapsed: this.isCollapsed,
+            });
+        },
+
+        /**
+         * Follow the expand / collapse all button. Storage is written once by
+         * the list itself, there is nothing to persist here.
+         * @param {boolean} collapsed Should this folder be closed?
+         * @returns {void}
+         */
+        applyCollapsedAll(collapsed) {
+            if (this.hasChildren) {
+                this.isCollapsed = collapsed;
+            }
         },
         /**
          * Get URL of monitor

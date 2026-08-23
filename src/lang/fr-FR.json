@@ -518,6 +518,8 @@
     "Domain Names": "Noms de domaine",
     "signedInDisp": "Connecté en tant que {0}",
     "signedInDispDisabled": "Authentification désactivée.",
+    "Expand all folders": "Déplier tous les dossiers",
+    "Collapse all folders": "Replier tous les dossiers",
     "Acknowledge": "Acquitter",
     "Acknowledged": "Acquitté",
     "Release": "Rendre la main",

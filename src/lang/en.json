@@ -370,6 +370,8 @@
     "Domain Names": "Domain Names",
     "signedInDisp": "Signed in as {0}",
     "signedInDispDisabled": "Auth Disabled.",
+    "Expand all folders": "Expand all folders",
+    "Collapse all folders": "Collapse all folders",
     "Acknowledge": "Acknowledge",
     "Acknowledged": "Acknowledged",
     "Release": "Release",

@@ -53,6 +53,8 @@ import {
     faShieldAlt,
     faFolder,
     faUserCheck,
+    faAngleDoubleDown,
+    faAngleDoubleUp,
 } from "@fortawesome/free-solid-svg-icons";
 
 library.add(
@@ -103,6 +105,8 @@ library.add(
     faShieldAlt,
     faFolder,
     faUserCheck,
+    faAngleDoubleDown,
+    faAngleDoubleUp,
 );
 
 export { FontAwesomeIcon };

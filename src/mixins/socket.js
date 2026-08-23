@@ -796,14 +796,30 @@ export default {
             return true;
         },
 
-        usernameFirstChar() {
+        /**
+         * Initials shown in the avatar: "Luc Vareille" gives "LV", and so does
+         * a provider username such as "luc.vareille". A single word keeps one
+         * letter, the way avatars usually do.
+         * @returns {string} One or two letters, or the fallback bear
+         */
+        userInitials() {
             const name = this.displayName;
 
-            if (typeof name === "string" && name.length >= 1) {
-                return name.charAt(0).toUpperCase();
-            } else {
+            if (typeof name !== "string" || name.trim() === "") {
                 return "🐻";
             }
+
+            const words = name.trim().split(/[\s._-]+/).filter(word => word !== "");
+
+            if (words.length === 0) {
+                return "🐻";
+            }
+
+            if (words.length === 1) {
+                return words[0].charAt(0).toUpperCase();
+            }
+
+            return (words[0].charAt(0) + words[words.length - 1].charAt(0)).toUpperCase();
         },
 
         lastHeartbeatList() {

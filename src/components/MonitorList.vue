@@ -27,6 +27,17 @@
             </div>
             <div class="header-filter">
                 <MonitorListFilter :filterState="filterState" @update-filter="updateFilter" />
+
+                <button
+                    v-if="collapsibleGroupIDs.length > 0"
+                    type="button"
+                    class="btn collapse-all-btn"
+                    :title="allCollapsed ? $t('Expand all folders') : $t('Collapse all folders')"
+                    :aria-label="allCollapsed ? $t('Expand all folders') : $t('Collapse all folders')"
+                    @click="toggleAllCollapsed"
+                >
+                    <font-awesome-icon :icon="allCollapsed ? 'angle-double-down' : 'angle-double-up'" />
+                </button>
             </div>
 
             <!-- Selection Controls -->
@@ -95,6 +106,9 @@ export default {
             disableSelectAllWatcher: false,
             selectedMonitors: {},
             windowTop: 0,
+            // Mirrors localStorage.monitorCollapsed, so the expand / collapse all
+            // button can tell what the folders are currently doing
+            collapsedState: {},
             filterState: {
                 status: null,
                 active: null,
@@ -103,6 +117,31 @@ export default {
         };
     },
     computed: {
+        /**
+         * Every monitor that actually contains something, and can therefore be
+         * folded. A childless group has no chevron, so it is left out.
+         * @returns {number[]} IDs of the foldable monitors
+         */
+        collapsibleGroupIDs() {
+            const withChildren = new Set();
+
+            for (const monitor of Object.values(this.$root.monitorList)) {
+                if (monitor.parent !== null && monitor.parent !== undefined) {
+                    withChildren.add(monitor.parent);
+                }
+            }
+
+            return [ ...withChildren ];
+        },
+
+        /**
+         * @returns {boolean} Is every folder closed right now?
+         */
+        allCollapsed() {
+            // A folder that was never touched starts closed
+            return this.collapsibleGroupIDs.every(id => this.collapsedState[id] !== false);
+        },
+
         /**
          * Improve the sticky appearance of the list by increasing its
          * height as user scrolls down.
@@ -206,11 +245,71 @@ export default {
     },
     mounted() {
         window.addEventListener("scroll", this.onScroll);
+        this.loadCollapsedState();
+        this.$root.emitter.on("monitorCollapsedChanged", this.onCollapsedChanged);
     },
     beforeUnmount() {
         window.removeEventListener("scroll", this.onScroll);
+        this.$root.emitter.off("monitorCollapsedChanged", this.onCollapsedChanged);
     },
     methods: {
+        /**
+         * Read what the folders were doing last time
+         * @returns {void}
+         */
+        loadCollapsedState() {
+            const storage = window.localStorage.getItem("monitorCollapsed");
+
+            if (storage === null) {
+                return;
+            }
+
+            try {
+                const stored = JSON.parse(storage);
+                const state = {};
+
+                for (const [ key, collapsed ] of Object.entries(stored)) {
+                    state[key.replace("monitor_", "")] = collapsed;
+                }
+
+                this.collapsedState = state;
+            } catch (e) {
+                // Unreadable storage, fall back to everything closed
+            }
+        },
+
+        /**
+         * A folder was folded or unfolded by hand
+         * @param {object} event Which monitor, and its new state
+         * @param {number} event.id ID of the monitor
+         * @param {boolean} event.collapsed Is it now closed?
+         * @returns {void}
+         */
+        onCollapsedChanged({ id, collapsed }) {
+            this.collapsedState[id] = collapsed;
+        },
+
+        /**
+         * Open every folder, or close them all when they are already open.
+         * Storage is written once here rather than by each folder.
+         * @returns {void}
+         */
+        toggleAllCollapsed() {
+            const collapsed = !this.allCollapsed;
+            const storageObject = {};
+            const state = {};
+
+            for (const id of this.collapsibleGroupIDs) {
+                storageObject[`monitor_${id}`] = collapsed;
+                state[id] = collapsed;
+            }
+
+            window.localStorage.setItem("monitorCollapsed", JSON.stringify(storageObject));
+            this.collapsedState = state;
+
+            this.$root.emitter.emit("monitorCollapsedAll", collapsed);
+        },
+
         /**
          * Handle user scroll
          * @returns {void}
@@ -391,6 +490,25 @@ export default {
 
 <style lang="scss" scoped>
 @import "../assets/vars.scss";
+
+// Sits with the filter buttons, so it borrows their look
+.collapse-all-btn {
+    font-size: 0.8em;
+    margin-left: auto;
+    margin-right: 7px;
+    // Line up with the filter buttons, which carry a pt-2
+    margin-top: 8px;
+    display: flex;
+    align-items: center;
+    padding: 2px 10px;
+    border-radius: 16px;
+    background-color: transparent;
+
+    .dark & {
+        color: $dark-font-color;
+        border: 1px solid $dark-font-color2;
+    }
+}
 
 .shadow-box {
     height: calc(100vh - 150px);
