@@ -113,10 +113,16 @@ L'option **Dossier uniquement**, disponible à l'édition d'un groupe, le ramèn
 attend d'un dossier :
 
 - il **n'envoie jamais de notification**, quelles que soient celles qui lui sont associées ;
-- il **n'apparaît pas** dans les compteurs Up / Down / Pause du tableau de bord ;
+- il **ne fait plus apparaître de bulle d'alerte** dans l'interface : seule la sonde réellement
+  tombée en déclenche une ;
+- il **n'apparaît pas** dans les compteurs Up / Down / Pause du tableau de bord, ni dans sa
+  liste des évènements importants ;
 - il **n'affiche ni pourcentage de disponibilité, ni barre de battements**.
 
-Il continue en revanche d'afficher l'état combiné de son contenu : l'icône de dossier prend
+Sa propre page conserve en revanche son historique : si vous ouvrez le dossier, vous voyez
+bien ses changements d'état. Ce qui est masqué, c'est sa présence sur le tableau de bord.
+
+Il continue par ailleurs d'afficher l'état combiné de son contenu : l'icône de dossier prend
 la couleur du pire état parmi ses enfants, ce qui permet de repérer un problème d'un coup
 d'œil sans déplier l'arborescence. Les groupes imbriqués continuent donc de fonctionner.
 

@@ -160,6 +160,12 @@ export default {
          * @returns {void}
          */
         onNewImportantHeartbeat(heartbeat) {
+            // Folders are filtered out of this list server side, keep the live
+            // feed consistent with what a reload would show
+            if (this.$root.monitorList[heartbeat.monitorID]?.folderOnly) {
+                return;
+            }
+
             if (this.page === 1) {
                 this.displayedRecords.unshift(heartbeat);
                 if (this.displayedRecords.length > this.perPage) {

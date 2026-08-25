@@ -245,17 +245,21 @@ export default {
                 // Also toast
                 if (data.important) {
 
-                    if (this.monitorList[data.monitorID] !== undefined) {
+                    const monitor = this.monitorList[data.monitorID];
+
+                    // A folder only group is not a probe, it must not pop a toast
+                    // of its own: the monitor that actually failed already did.
+                    if (monitor !== undefined && !monitor.folderOnly) {
                         if (data.status === 0) {
-                            toast.error(`[${this.monitorList[data.monitorID].name}] [DOWN] ${data.msg}`, {
+                            toast.error(`[${monitor.name}] [DOWN] ${data.msg}`, {
                                 timeout: getToastErrorTimeout(),
                             });
                         } else if (data.status === 1) {
-                            toast.success(`[${this.monitorList[data.monitorID].name}] [Up] ${data.msg}`, {
+                            toast.success(`[${monitor.name}] [Up] ${data.msg}`, {
                                 timeout: getToastSuccessTimeout(),
                             });
                         } else {
-                            toast(`[${this.monitorList[data.monitorID].name}] ${data.msg}`);
+                            toast(`[${monitor.name}] ${data.msg}`);
                         }
                     }
 

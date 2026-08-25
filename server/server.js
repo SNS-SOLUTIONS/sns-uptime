@@ -121,6 +121,13 @@ const port = config.port;
 const disableFrameSameOrigin = !!process.env.UPTIME_KUMA_DISABLE_FRAME_SAMEORIGIN || args["disable-frame-sameorigin"] || false;
 const cloudflaredToken = args["cloudflared-token"] || process.env.UPTIME_KUMA_CLOUDFLARED_TOKEN || undefined;
 
+/**
+ * A folder only group is not a probe, so its ups and downs do not belong in the
+ * dashboard event list. Opening the folder itself still shows its own history.
+ * @type {string}
+ */
+const EXCLUDE_FOLDER_ONLY_SQL = " AND NOT EXISTS (SELECT 1 FROM monitor WHERE monitor.id = heartbeat.monitor_id AND monitor.folder_only = 1) ";
+
 // 2FA / notp verification defaults
 const twoFAVerifyOptions = {
     "window": 1,
@@ -1252,7 +1259,7 @@ let needSetup = false;
 
                 let count;
                 if (monitorID == null) {
-                    count = await R.count("heartbeat", "important = 1");
+                    count = await R.count("heartbeat", "important = 1" + EXCLUDE_FOLDER_ONLY_SQL);
                 } else {
                     count = await R.count("heartbeat", "monitor_id = ? AND important = 1", [
                         monitorID,
@@ -1279,6 +1286,7 @@ let needSetup = false;
                 if (monitorID == null) {
                     list = await R.find("heartbeat", `
                         important = 1
+                        ${EXCLUDE_FOLDER_ONLY_SQL}
                         ORDER BY time DESC
                         LIMIT ?
                         OFFSET ?
