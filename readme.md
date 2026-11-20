@@ -103,14 +103,80 @@ prévenu individuellement.
 - La notification de retour à la normale destinée à toute l'équipe continue de partir
   normalement : le mail à la personne qui a acquitté s'ajoute, il ne remplace rien.
 
-## Groupes « Dossier uniquement »
+## Agences
+
+Une **agence** coiffe l'arborescence des sondes : elle regroupe les dossiers et les sondes
+d'un même site.
+
+```
+MARSEILLE              ← agence
+├── Clients            ← dossier
+│   ├── SRV-01         ← sonde
+│   └── SRV-02
+└── Routeur            ← une sonde peut aussi être rangée directement dans l'agence
+```
+
+### Créer une agence
+
+**Ajouter une nouvelle sonde** → type **Groupe** → rôle **Agence**.
+
+Un dossier existant peut aussi devenir une agence : ouvrez son écran d'édition et changez son
+rôle, il remonte à la racine avec tout son contenu.
+
+### Ranger un dossier ou une sonde dans une agence
+
+Dans l'écran d'édition, le champ **Groupe de sonde** classe les destinations en deux parties :
+**Agences** (chaque agence suivie de ses dossiers, par exemple « MARSEILLE / Clients ») et
+**Hors agence**.
+
+Le bouton **+** à côté de ce champ crée un nouveau dossier et propose de le ranger directement
+dans une agence : celle de la sonde en cours d'édition est présélectionnée.
+
+### Comportement
+
+- Une agence est **toujours à la racine** de la liste, elle ne peut pas être rangée dans un
+  autre groupe. Les agences s'affichent en tête, avec une icône de bâtiment et leur nom en
+  gras ; ce qui n'est rangé dans aucune agence suit en dessous.
+- Elle se comporte comme un **dossier** (voir ci-dessous) : jamais de notification, pas de
+  bulle d'alerte, absente des compteurs et des évènements du tableau de bord, ni pourcentage
+  ni barre de battements. Son icône prend la couleur du pire état de son contenu.
+- Sélectionner une agence dans une **maintenance** couvre toutes les sondes qu'elle contient.
+- Supprimer une agence ne supprime pas son contenu : ses dossiers et sondes remontent à la
+  racine.
+
+### L'agence accompagne ses sondes
+
+Une sonde rangée dans une agence l'annonce partout où elle est citée :
+
+- dans les **notifications** : `[MARSEILLE] [SRV-01] [🔴 Down] Connection refused`. C'est
+  aussi le cas du retour à la normale, de l'alerte d'expiration de certificat et du mail
+  envoyé à la personne qui avait acquitté l'incident. Les sondes hors agence gardent le
+  format habituel ;
+- dans les **bulles d'alerte** de l'interface ;
+- dans la liste des **évènements importants** du tableau de bord ;
+- en haut de sa **page de détail**, sous forme de chemin cliquable : « MARSEILLE / Clients ».
+
+### Recherche
+
+Rechercher le nom d'une agence ou d'un dossier affiche **tout son contenu**.
+
+Pendant une recherche ou un filtre, les agences et dossiers qui contiennent un résultat
+s'ouvrent tout seuls. Les replier à la main reste possible et ne modifie pas l'état mémorisé
+de la liste : elle revient telle quelle une fois la recherche effacée.
+
+### Migration
+
+Rien à faire : la mise à jour ajoute la notion d'agence sans rien déplacer. Créez vos agences,
+puis rangez-y vos dossiers existants depuis leur écran d'édition.
+
+## Dossiers
 
 Par défaut dans Uptime Kuma, un groupe est une sonde à part entière : il produit ses propres
 battements, alerte quand un de ses enfants tombe, et compte dans les statistiques. Résultat,
 une seule panne déclenche deux notifications — celle de la sonde, puis celle de son groupe.
 
-L'option **Dossier uniquement**, disponible à l'édition d'un groupe, le ramène à ce qu'on
-attend d'un dossier :
+Le rôle **Dossier** (anciennement l'option « Dossier uniquement »), choisi dans
+**Rôle du groupe** à l'édition d'un groupe, le ramène à ce qu'on attend d'un dossier :
 
 - il **n'envoie jamais de notification**, quelles que soient celles qui lui sont associées ;
 - il **ne fait plus apparaître de bulle d'alerte** dans l'interface : seule la sonde réellement
@@ -128,10 +194,10 @@ d'œil sans déplier l'arborescence. Les groupes imbriqués continuent donc de f
 
 ### Migration
 
-Les groupes qui existaient déjà sont **basculés automatiquement** en « Dossier uniquement »
-à la première mise à jour, sans action de votre part. Les nouveaux groupes le sont aussi par
+Les groupes qui existaient déjà sont **basculés automatiquement** en dossiers à la première
+mise à jour, sans action de votre part. Les nouveaux groupes sont aussi des dossiers par
 défaut. Si vous voulez qu'un groupe précis se comporte à nouveau comme une sonde (alertes et
-statistiques comprises), décochez la case dans son écran d'édition.
+statistiques comprises), choisissez le rôle **Groupe surveillé** dans son écran d'édition.
 
 ## Authentification via Authentik (forward auth)
 

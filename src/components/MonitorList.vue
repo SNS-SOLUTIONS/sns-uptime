@@ -28,8 +28,9 @@
             <div class="header-filter">
                 <MonitorListFilter :filterState="filterState" @update-filter="updateFilter" />
 
+                <!-- Hidden during a search, which already unfolds what matches -->
                 <button
-                    v-if="collapsibleGroupIDs.length > 0"
+                    v-if="collapsibleGroupIDs.length > 0 && !filtersActive"
                     type="button"
                     class="btn collapse-all-btn"
                     :title="allCollapsed ? $t('Expand all folders') : $t('Collapse all folders')"
@@ -62,8 +63,8 @@
             </div>
 
             <MonitorListItem
-                v-for="(item, index) in sortedMonitorList"
-                :key="index"
+                v-for="item in sortedMonitorList"
+                :key="item.id"
                 :monitor="item"
                 :isSelectMode="selectMode"
                 :isSelected="isSelected"
@@ -71,6 +72,7 @@
                 :deselect="deselect"
                 :filter-func="filterFunc"
                 :sort-func="sortFunc"
+                :filtering="filtersActive"
             />
         </div>
     </div>
@@ -413,28 +415,27 @@ export default {
         filterFunc(monitor) {
             // Group monitors bypass filter if at least 1 of children matched
             if (monitor.type === "group") {
-                const children = Object.values(this.$root.monitorList).filter(m => m.parent === monitor.id);
+                const children = this.$root.monitorChildrenList[monitor.id] ?? [];
                 if (children.some((child, index, children) => this.filterFunc(child))) {
                     return true;
                 }
             }
 
             // filter by search text
-            // finds monitor name, tag name or tag value
+            // finds monitor name, tag name or tag value, on the monitor or on one
+            // of its groups: looking up an agency or a folder lists all it holds
             let searchTextMatch = true;
             if (this.searchText !== "") {
-                const loweredSearchText = this.searchText.toLowerCase();
-                searchTextMatch =
-                    monitor.name.toLowerCase().includes(loweredSearchText)
-                    || monitor.tags.find(tag => tag.name.toLowerCase().includes(loweredSearchText)
-                        || tag.value?.toLowerCase().includes(loweredSearchText));
+                searchTextMatch = [ monitor, ...this.$root.getMonitorAncestors(monitor.id) ]
+                    .some(this.matchesSearchText);
             }
 
             // filter by status
             let statusMatch = true;
             if (this.filterState.status != null && this.filterState.status.length > 0) {
-                if (monitor.id in this.$root.lastHeartbeatList && this.$root.lastHeartbeatList[monitor.id]) {
-                    monitor.status = this.$root.lastHeartbeatList[monitor.id].status;
+                const lastHeartbeat = this.$root.getLastHeartbeat(monitor.id);
+                if (lastHeartbeat) {
+                    monitor.status = lastHeartbeat.status;
                 }
                 statusMatch = this.filterState.status.includes(monitor.status);
             }
@@ -456,12 +457,30 @@ export default {
             return searchTextMatch && statusMatch && activeMatch && tagsMatch;
         },
         /**
+         * Does the search text appear in the name of a monitor, or in one of
+         * its tags?
+         * @param {object} monitor Monitor to check
+         * @returns {boolean} True if the monitor matches the search text
+         */
+        matchesSearchText(monitor) {
+            const loweredSearchText = this.searchText.toLowerCase();
+
+            return monitor.name.toLowerCase().includes(loweredSearchText)
+                || monitor.tags.some(tag => tag.name.toLowerCase().includes(loweredSearchText)
+                    || tag.value?.toLowerCase().includes(loweredSearchText));
+        },
+        /**
          * Function used in Array.sort to order monitors in a list.
          * @param {*} m1 monitor 1
          * @param {*} m2 monitor 2
          * @returns {number} -1, 0 or 1
          */
         sortFunc(m1, m2) {
+            // Agencies head the list, what is not filed under one comes after
+            if (!!m1.agency !== !!m2.agency) {
+                return m1.agency ? -1 : 1;
+            }
+
             if (m1.active !== m2.active) {
                 if (m1.active === false) {
                     return 1;

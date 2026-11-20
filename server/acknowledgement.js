@@ -205,7 +205,7 @@ class Acknowledgement {
             smtpBCC: "",
         };
 
-        const msg = `[${monitor.name}] [✅ Up] ${heartbeat.msg}`;
+        const msg = `${await monitor.getNotificationTitle()} [✅ Up] ${heartbeat.msg}`;
 
         // Same enrichment as a regular notification, so the mail templates work
         const heartbeatJSON = heartbeat.toJSON();

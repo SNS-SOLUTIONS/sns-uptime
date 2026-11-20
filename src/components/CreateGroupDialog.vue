@@ -14,6 +14,17 @@
                             <label for="draftGroupName" class="form-label">{{ $t("Group Name") }}</label>
                             <input id="draftGroupName" v-model="groupName" type="text" class="form-control">
                         </div>
+
+                        <!-- The new folder can be filed straight into an agency -->
+                        <div v-if="agencyList.length > 0" class="mt-3">
+                            <label for="draftGroupAgency" class="form-label">{{ $t("Agency") }}</label>
+                            <select id="draftGroupAgency" v-model="agencyID" class="form-select">
+                                <option :value="null">{{ $t("No agency") }}</option>
+                                <option v-for="agency in agencyList" :key="agency.id" :value="agency.id">
+                                    {{ agency.name }}
+                                </option>
+                            </select>
+                        </div>
                     </form>
                 </div>
                 <div class="modal-footer">
@@ -38,16 +49,29 @@ export default {
     data: () => ({
         modal: null,
         groupName: null,
+        agencyID: null,
     }),
+    computed: {
+        /**
+         * @returns {object[]} Agencies the new group can be filed into, by name
+         */
+        agencyList() {
+            return Object.values(this.$root.monitorList)
+                .filter(monitor => monitor.agency)
+                .sort((m1, m2) => m1.name.localeCompare(m2.name));
+        },
+    },
     mounted() {
         this.modal = new Modal(this.$refs.modal);
     },
     methods: {
         /**
          * Show the confirm dialog
+         * @param {?number} agencyID Agency suggested for the new group
          * @returns {void}
          */
-        show() {
+        show(agencyID = null) {
+            this.agencyID = agencyID;
             this.modal.show();
         },
         /**
@@ -55,7 +79,7 @@ export default {
          * @returns {void}
          */
         confirm() {
-            this.$emit("added", this.groupName);
+            this.$emit("added", this.groupName, this.agencyID);
             this.modal.hide();
         },
     },

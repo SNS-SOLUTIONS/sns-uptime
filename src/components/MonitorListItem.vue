@@ -15,18 +15,18 @@
             <router-link :to="monitorURL(monitor.id)" class="item" :class="{ 'disabled': ! monitor.active }">
                 <div class="row">
                     <div class="col-9 col-md-8 small-padding" :class="{ 'monitor-item': $root.userHeartbeatBar == 'bottom' || $root.userHeartbeatBar == 'none' }">
-                        <div class="info">
+                        <div class="info" :class="{ 'is-agency': monitor.agency }">
                             <span
                                 v-if="monitor.folderOnly"
                                 class="folder-badge"
                                 :class="'text-' + folderColor"
-                                :title="$t('Folder Only')"
+                                :title="monitor.agency ? $t('Agency') : $t('Folder')"
                             >
-                                <font-awesome-icon icon="folder" />
+                                <font-awesome-icon :icon="monitor.agency ? 'building' : 'folder'" />
                             </span>
                             <Uptime v-else :monitor="monitor" type="24" :pill="true" />
                             <span v-if="hasChildren" class="collapse-padding" @click.prevent="changeCollapsed">
-                                <font-awesome-icon icon="chevron-down" class="animated" :class="{ collapsed: isCollapsed}" />
+                                <font-awesome-icon icon="chevron-down" class="animated" :class="{ collapsed: isFolded }" />
                             </span>
                             {{ monitor.name }}
                         </div>
@@ -48,16 +48,18 @@
         </div>
 
         <transition name="slide-fade-up">
-            <div v-if="!isCollapsed" class="childs">
+            <div v-if="!isFolded" class="childs">
                 <MonitorListItem
-                    v-for="(item, index) in sortedChildMonitorList"
-                    :key="index" :monitor="item"
+                    v-for="item in sortedChildMonitorList"
+                    :key="item.id"
+                    :monitor="item"
                     :isSelectMode="isSelectMode"
                     :isSelected="isSelected"
                     :select="select"
                     :deselect="deselect"
                     :filter-func="filterFunc"
                     :sort-func="sortFunc"
+                    :filtering="filtering"
                     :depth="depth + 1"
                 />
             </div>
@@ -118,22 +120,30 @@ export default {
         sortFunc: {
             type: Function,
             default: () => {},
-        }
+        },
+        /**
+         * Is the list being searched or filtered? What matches is then shown
+         * straight away, without having to unfold agency and folder by hand.
+         */
+        filtering: {
+            type: Boolean,
+            default: false,
+        },
     },
     data() {
         return {
             isCollapsed: true,
+            // Folding done during a search is only meant for that search, it
+            // does not touch what is remembered for the regular list
+            isCollapsedWhileFiltering: false,
         };
     },
     computed: {
         sortedChildMonitorList() {
-            let result = Object.values(this.$root.monitorList);
-
-            // Get children
-            result = result.filter(childMonitor => childMonitor.parent === this.monitor.id);
+            const children = this.$root.monitorChildrenList[this.monitor.id] ?? [];
 
             // Run filter on children
-            result = result.filter(this.filterFunc);
+            let result = children.filter(this.filterFunc);
 
             result.sort(this.sortFunc);
 
@@ -141,6 +151,12 @@ export default {
         },
         hasChildren() {
             return this.sortedChildMonitorList.length > 0;
+        },
+        /**
+         * @returns {boolean} Are the children hidden right now?
+         */
+        isFolded() {
+            return this.filtering ? this.isCollapsedWhileFiltering : this.isCollapsed;
         },
         depthMargin() {
             return {
@@ -153,7 +169,7 @@ export default {
          * @returns {string} Bootstrap colour name for the folder icon
          */
         folderColor() {
-            const status = this.$root.lastHeartbeatList[this.monitor.id]?.status;
+            const status = this.$root.getLastHeartbeat(this.monitor.id)?.status;
 
             if (status === MAINTENANCE) {
                 return "maintenance";
@@ -175,7 +191,11 @@ export default {
         isSelectMode() {
             // TODO: Resize the heartbeat bar, but too slow
             // this.$refs.heartbeatBar.resize();
-        }
+        },
+        filtering() {
+            // Every search starts with everything that matches unfolded
+            this.isCollapsedWhileFiltering = false;
+        },
     },
     mounted() {
         this.$root.emitter.on("monitorCollapsedAll", this.applyCollapsedAll);
@@ -211,6 +231,11 @@ export default {
          * @returns {void}
          */
         changeCollapsed() {
+            if (this.filtering) {
+                this.isCollapsedWhileFiltering = !this.isCollapsedWhileFiltering;
+                return;
+            }
+
             this.isCollapsed = !this.isCollapsed;
 
             // Save collapsed value into local storage
@@ -272,6 +297,13 @@ export default {
     min-width: 62px;
     text-align: center;
     font-size: 15px;
+}
+
+// The agency heads its own tree, it stands out from the folders below it.
+// Set on the whole line: the name has to stay a plain text node, the space
+// in front of it is what keeps it apart from the uptime pill or the chevron.
+.is-agency {
+    font-weight: bold;
 }
 
 .small-padding {

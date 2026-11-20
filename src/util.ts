@@ -212,7 +212,9 @@ class Logger {
      * @returns {void}
      */
     log(module: string, msg: any, level: string) {
-        if (level === "DEBUG" && !isDev) {
+        // Callers give the level in lower case. Compared as is, it never matched:
+        // debug messages were formatted, time zone included, to be thrown away.
+        if (level.toUpperCase() === "DEBUG" && !isDev) {
             return;
         }
 

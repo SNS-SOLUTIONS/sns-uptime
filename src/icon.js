@@ -55,6 +55,7 @@ import {
     faUserCheck,
     faAngleDoubleDown,
     faAngleDoubleUp,
+    faBuilding,
 } from "@fortawesome/free-solid-svg-icons";
 
 library.add(
@@ -107,6 +108,7 @@ library.add(
     faUserCheck,
     faAngleDoubleDown,
     faAngleDoubleUp,
+    faBuilding,
 );
 
 export { FontAwesomeIcon };

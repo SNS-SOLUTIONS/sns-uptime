@@ -702,7 +702,7 @@ let needSetup = false;
 
                 bean.import(monitor);
                 bean.user_id = socket.userID;
-                bean.folderOnly = monitor.type === "group" && !!monitor.folderOnly;
+                bean.applyGroupRole(monitor);
 
                 bean.validate();
 
@@ -770,7 +770,7 @@ let needSetup = false;
                 bean.description = monitor.description;
                 bean.parent = monitor.parent;
                 bean.type = monitor.type;
-                bean.folderOnly = monitor.type === "group" && !!monitor.folderOnly;
+                bean.applyGroupRole(monitor);
                 bean.url = monitor.url;
                 bean.method = monitor.method;
                 bean.body = monitor.body;
@@ -1860,10 +1860,18 @@ async function startMonitors() {
         server.monitorList[monitor.id] = monitor;
     }
 
+    // Give some delays, so all monitors won't make request at the same moment
+    // when just start the server. The delays shrink on a large instance, which
+    // would otherwise stay partly blind for minutes after a restart (over five
+    // for 500 monitors): however many they are, all of them are running within
+    // about a minute, the pace they keep afterwards at the default interval.
+    const minDelay = 300;
+    const maxDelay = 1000;
+    const pace = Math.min(1, 60 * 1000 / (list.length * (minDelay + maxDelay) / 2));
+
     for (let monitor of list) {
         await monitor.start(io);
-        // Give some delays, so all monitors won't make request at the same moment when just start the server.
-        await sleep(getRandomInt(300, 1000));
+        await sleep(getRandomInt(minDelay, maxDelay) * pace);
     }
 }
 

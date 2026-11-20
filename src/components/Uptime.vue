@@ -81,11 +81,7 @@ export default {
         },
 
         lastHeartBeat() {
-            if (this.monitor.id in this.$root.lastHeartbeatList && this.$root.lastHeartbeatList[this.monitor.id]) {
-                return this.$root.lastHeartbeatList[this.monitor.id];
-            }
-
-            return {
+            return this.$root.getLastHeartbeat(this.monitor.id) ?? {
                 status: -1,
             };
         },

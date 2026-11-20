@@ -102,14 +102,26 @@
                                 <input id="name" v-model="monitor.name" type="text" class="form-control" required>
                             </div>
 
-                            <!-- Folder Only (group) -->
-                            <div v-if="monitor.type === 'group'" class="my-3 form-check">
-                                <input id="folder-only" v-model="monitor.folderOnly" class="form-check-input" type="checkbox">
-                                <label class="form-check-label" for="folder-only">
-                                    {{ $t("Folder Only") }}
-                                </label>
-                                <div class="form-text">
-                                    {{ $t("folderOnlyDescription") }}
+                            <!-- Group role: agency, folder or monitored group -->
+                            <div v-if="monitor.type === 'group'" class="my-3" role="radiogroup" aria-labelledby="group-role-label">
+                                <div id="group-role-label" class="form-label">{{ $t("Group Role") }}</div>
+
+                                <div v-for="role in groupRoleList" :key="role.value" class="form-check mb-2">
+                                    <input
+                                        :id="'group-role-' + role.value"
+                                        v-model="groupRole"
+                                        class="form-check-input"
+                                        type="radio"
+                                        name="group-role"
+                                        :value="role.value"
+                                    >
+                                    <label class="form-check-label" :for="'group-role-' + role.value">
+                                        <font-awesome-icon :icon="role.icon" class="me-1" fixed-width />
+                                        {{ $t(role.label) }}
+                                    </label>
+                                    <div class="form-text">
+                                        {{ $t(role.description) }}
+                                    </div>
                                 </div>
                             </div>
 
@@ -646,8 +658,8 @@
                                 </div>
                             </template>
 
-                            <!-- Parent Monitor -->
-                            <div class="my-3">
+                            <!-- Parent Monitor (an agency always sits at the root) -->
+                            <div v-if="! isAgency" class="my-3">
                                 <label for="monitorGroupSelector" class="form-label">{{ $t("Monitor Group") }}</label>
                                 <ActionSelect
                                     id="monitorGroupSelector"
@@ -656,7 +668,7 @@
                                     :options="parentMonitorOptionsList"
                                     :disabled="sortedGroupMonitorList.length === 0 && draftGroupName == null"
                                     :icon="'plus'"
-                                    :action="() => $refs.createGroupDialog.show()"
+                                    :action="() => $refs.createGroupDialog.show(parentAgencyID)"
                                 />
                             </div>
 
@@ -677,7 +689,11 @@
                             <!-- Notifications -->
                             <h2 class="mb-2">{{ $t("Notifications") }}</h2>
 
-                            <p v-if="isFolderOnly" class="form-text">
+                            <p v-if="isAgency" class="form-text">
+                                {{ $t("agencyNoNotification") }}
+                            </p>
+
+                            <p v-else-if="isFolderOnly" class="form-text">
                                 {{ $t("folderOnlyNoNotification") }}
                             </p>
 
@@ -1028,6 +1044,7 @@ const monitorDefaults = {
     ignoreTls: false,
     upsideDown: false,
     folderOnly: false,
+    agency: false,
     packetSize: 56,
     expiryNotification: false,
     maxredirects: 10,
@@ -1055,6 +1072,31 @@ const monitorDefaults = {
     gamedigGivenPortOnly: true,
     remote_browser: null
 };
+
+/**
+ * What a group can be used for, from the top of the tree down
+ * @type {{value: string, icon: string, label: string, description: string}[]}
+ */
+const groupRoleList = [
+    {
+        value: "agency",
+        icon: "building",
+        label: "Agency",
+        description: "agencyDescription",
+    },
+    {
+        value: "folder",
+        icon: "folder",
+        label: "Folder",
+        description: "folderOnlyDescription",
+    },
+    {
+        value: "monitored",
+        icon: "heartbeat",
+        label: "Monitored Group",
+        description: "monitoredGroupDescription",
+    },
+];
 
 export default {
     components: {
@@ -1093,6 +1135,8 @@ export default {
                 "mongodb": "mongodb://username:password@host:port/database",
             },
             draftGroupName: null,
+            draftGroupAgencyID: null,
+            groupRoleList,
             remoteBrowsersEnabled: false,
         };
     },
@@ -1226,6 +1270,69 @@ message HealthCheckResponse {
             return this.monitor.type === "group" && !!this.monitor.folderOnly;
         },
 
+        /**
+         * Is the monitor being edited an agency?
+         * @returns {boolean} True if it is an agency
+         */
+        isAgency() {
+            return this.monitor.type === "group" && !!this.monitor.agency;
+        },
+
+        /**
+         * What the group being edited is used for. It is stored as two flags,
+         * an agency being a folder only group that always sits at the root.
+         */
+        groupRole: {
+            /**
+             * Read the role from the flags
+             * @returns {string} "agency", "folder" or "monitored"
+             */
+            get() {
+                if (this.monitor.agency) {
+                    return "agency";
+                }
+
+                return this.monitor.folderOnly ? "folder" : "monitored";
+            },
+
+            /**
+             * Turn the chosen role into flags
+             * @param {string} role "agency", "folder" or "monitored"
+             * @returns {void}
+             */
+            set(role) {
+                this.monitor.agency = role === "agency";
+                this.monitor.folderOnly = role !== "monitored";
+
+                if (this.monitor.agency) {
+                    this.monitor.parent = null;
+                }
+            },
+        },
+
+        /**
+         * The agency holding the group currently chosen as parent, suggested
+         * for a group created from here
+         * @returns {?number} ID of the agency, or null
+         */
+        parentAgencyID() {
+            if (this.monitor.parent === -1) {
+                return this.draftGroupAgencyID;
+            }
+
+            const parent = this.$root.monitorList[this.monitor.parent];
+
+            if (parent === undefined) {
+                return null;
+            }
+
+            if (parent.agency) {
+                return parent.id;
+            }
+
+            return this.$root.getMonitorAgency(parent.id)?.id ?? null;
+        },
+
         currentGameObject() {
             if (this.gameList) {
                 for (let game of this.gameList) {
@@ -1292,23 +1399,48 @@ message HealthCheckResponse {
                     }
                 ];
             } else {
+                const toOption = monitor => {
+                    return {
+                        label: monitor.pathName,
+                        value: monitor.id,
+                    };
+                };
+
+                // Once there are agencies, what they hold is set apart from the rest
+                const inAgency = this.sortedGroupMonitorList.filter(
+                    monitor => monitor.agency || this.$root.getMonitorAgency(monitor.id) !== null
+                );
+                const outsideAgency = this.sortedGroupMonitorList.filter(monitor => !inAgency.includes(monitor));
+
                 list = [
                     {
                         label: this.$t("None"),
                         value: null
                     },
-                    ... this.sortedGroupMonitorList.map(monitor => {
-                        return {
-                            label: monitor.pathName,
-                            value: monitor.id,
-                        };
-                    }),
                 ];
+
+                if (inAgency.length === 0) {
+                    list.push(...outsideAgency.map(toOption));
+                } else {
+                    list.push({
+                        label: this.$t("Agencies"),
+                        options: inAgency.map(toOption),
+                    });
+
+                    if (outsideAgency.length > 0) {
+                        list.push({
+                            label: this.$t("Outside any agency"),
+                            options: outsideAgency.map(toOption),
+                        });
+                    }
+                }
             }
 
             if (this.draftGroupName != null) {
+                const draftGroupAgency = this.$root.monitorList[this.draftGroupAgencyID];
+
                 list = [{
-                    label: this.draftGroupName,
+                    label: draftGroupAgency ? `${draftGroupAgency.name} / ${this.draftGroupName}` : this.draftGroupName,
                     value: -1,
                 }].concat(list);
             }
@@ -1368,6 +1500,11 @@ message HealthCheckResponse {
             // folder by default. Editing an existing monitor keeps its own value.
             if (this.isAdd && this.monitor.type === "group") {
                 this.monitor.folderOnly = true;
+            }
+
+            // Only a group can be an agency
+            if (this.monitor.type !== "group") {
+                this.monitor.agency = false;
             }
 
             if (this.monitor.type === "push") {
@@ -1571,6 +1708,7 @@ message HealthCheckResponse {
             }
 
             this.draftGroupName = null;
+            this.draftGroupAgencyID = null;
 
         },
 
@@ -1657,6 +1795,7 @@ message HealthCheckResponse {
                         type: "group",
                         folderOnly: true,
                         name: this.draftGroupName,
+                        parent: this.draftGroupAgencyID,
                         interval: this.monitor.interval,
                         active: false,
                     }, resolve);
@@ -1745,10 +1884,12 @@ message HealthCheckResponse {
         /**
          * Adds a draft group.
          * @param {string} draftGroupName The name of the draft group.
+         * @param {?number} draftGroupAgencyID The agency the draft group is filed into, if any.
          * @returns {void}
          */
-        addedDraftGroup(draftGroupName) {
+        addedDraftGroup(draftGroupName, draftGroupAgencyID = null) {
             this.draftGroupName = draftGroupName;
+            this.draftGroupAgencyID = draftGroupAgencyID;
             this.monitor.parent = -1;
         },
 

@@ -110,79 +110,52 @@ class UptimeCalculator {
         let now = this.getCurrentDate();
 
         // Load minutely data from database (recent 24 hours only)
-        let minutelyStatBeans = await R.find("stat_minutely", " monitor_id = ? AND timestamp > ? ORDER BY timestamp", [
-            monitorID,
-            this.getMinutelyKey(now.subtract(24, "hour")),
-        ]);
-
-        for (let bean of minutelyStatBeans) {
-            let data = {
-                up: bean.up,
-                down: bean.down,
-                avgPing: bean.ping,
-                minPing: bean.pingMin,
-                maxPing: bean.pingMax,
-            };
-
-            if (bean.extras != null) {
-                data = {
-                    ...data,
-                    ...JSON.parse(bean.extras),
-                };
-            }
-
-            let key = bean.timestamp;
-            this.minutelyUptimeDataList.push(key, data);
-        }
+        await this.loadStats("stat_minutely", this.getMinutelyKey(now.subtract(24, "hour")), this.minutelyUptimeDataList);
 
         // Load hourly data from database (recent 30 days only)
-        let hourlyStatBeans = await R.find("stat_hourly", " monitor_id = ? AND timestamp > ? ORDER BY timestamp", [
-            monitorID,
-            this.getHourlyKey(now.subtract(30, "day")),
-        ]);
-
-        for (let bean of hourlyStatBeans) {
-            let data = {
-                up: bean.up,
-                down: bean.down,
-                avgPing: bean.ping,
-                minPing: bean.pingMin,
-                maxPing: bean.pingMax,
-            };
-
-            if (bean.extras != null) {
-                data = {
-                    ...data,
-                    ...JSON.parse(bean.extras),
-                };
-            }
-
-            this.hourlyUptimeDataList.push(bean.timestamp, data);
-        }
+        await this.loadStats("stat_hourly", this.getHourlyKey(now.subtract(30, "day")), this.hourlyUptimeDataList);
 
         // Load daily data from database (recent 365 days only)
-        let dailyStatBeans = await R.find("stat_daily", " monitor_id = ? AND timestamp > ? ORDER BY timestamp", [
-            monitorID,
-            this.getDailyKey(now.subtract(365, "day")),
+        await this.loadStats("stat_daily", this.getDailyKey(now.subtract(365, "day")), this.dailyUptimeDataList);
+    }
+
+    /**
+     * Load the stored statistics of a period. Read as plain rows: this runs
+     * for every monitor when the server starts, about 2 500 rows each once a
+     * year of history is there, and a bean per row is costly.
+     * @param {string} table stat_minutely, stat_hourly or stat_daily
+     * @param {number} since Timestamp (in seconds) to load from, excluded
+     * @param {ArrayWithKey} list Where the data goes
+     * @returns {Promise<void>}
+     */
+    async loadStats(table, since, list) {
+        const rows = await R.getAll(`
+            SELECT timestamp, up, down, ping, ping_min, ping_max, extras
+            FROM ${table}
+            WHERE monitor_id = ? AND timestamp > ?
+            ORDER BY timestamp
+        `, [
+            this.monitorID,
+            since,
         ]);
 
-        for (let bean of dailyStatBeans) {
+        for (const row of rows) {
             let data = {
-                up: bean.up,
-                down: bean.down,
-                avgPing: bean.ping,
-                minPing: bean.pingMin,
-                maxPing: bean.pingMax,
+                up: row.up,
+                down: row.down,
+                avgPing: row.ping,
+                minPing: row.ping_min,
+                maxPing: row.ping_max,
             };
 
-            if (bean.extras != null) {
+            if (row.extras != null) {
                 data = {
                     ...data,
-                    ...JSON.parse(bean.extras),
+                    ...JSON.parse(row.extras),
                 };
             }
 
-            this.dailyUptimeDataList.push(bean.timestamp, data);
+            list.push(row.timestamp, data);
         }
     }
 
@@ -327,17 +300,27 @@ class UptimeCalculator {
         }
         await R.store(minutelyStatBean);
 
-        // Remove the old data
-        log.debug("uptime-calc", "Remove old data");
-        await R.exec("DELETE FROM stat_minutely WHERE monitor_id = ? AND timestamp < ?", [
-            this.monitorID,
-            this.getMinutelyKey(date.subtract(24, "hour")),
-        ]);
+        // Remove the old data. Once an hour is plenty: nothing reads further
+        // back than 24 hours (minutely) or 30 days (hourly) anyway, and doing
+        // it on every beat cost two more writes per beat.
+        // The limits are computed directly: getMinutelyKey() and getHourlyKey()
+        // also add an empty bucket for the key to the in-memory queues, which
+        // pushed real buckets out of them (the 24-hour uptime ended up
+        // covering only the last 12 hours).
+        if (this.lastCleanupHourlyKey !== hourlyKey) {
+            log.debug("uptime-calc", "Remove old data");
+            await R.exec("DELETE FROM stat_minutely WHERE monitor_id = ? AND timestamp < ?", [
+                this.monitorID,
+                date.subtract(24, "hour").startOf("minute").unix(),
+            ]);
 
-        await R.exec("DELETE FROM stat_hourly WHERE monitor_id = ? AND timestamp < ?", [
-            this.monitorID,
-            this.getHourlyKey(date.subtract(30, "day")),
-        ]);
+            await R.exec("DELETE FROM stat_hourly WHERE monitor_id = ? AND timestamp < ?", [
+                this.monitorID,
+                date.subtract(30, "day").startOf("hour").unix(),
+            ]);
+
+            this.lastCleanupHourlyKey = hourlyKey;
+        }
 
         return date;
     }

@@ -1,7 +1,15 @@
 <template>
     <transition name="slide-fade" appear>
         <div v-if="monitor">
-            <router-link v-if="group !== ''" :to="monitorURL(monitor.parent)"> {{ group }}</router-link>
+            <!-- Where the monitor is filed: agency / folder / ... -->
+            <nav v-if="ancestors.length > 0" class="monitor-path" :aria-label="$t('Monitor Group')">
+                <template v-for="(ancestor, index) in ancestors" :key="ancestor.id">
+                    <span v-if="index > 0" class="separator" aria-hidden="true">/</span>
+                    <router-link :to="monitorURL(ancestor.id)">
+                        <font-awesome-icon v-if="ancestor.folderOnly" :icon="ancestor.agency ? 'building' : 'folder'" class="me-1" />{{ ancestor.name }}
+                    </router-link>
+                </template>
+            </nav>
             <h1>
                 {{ monitor.name }}
                 <div class="monitor-id">
@@ -88,7 +96,7 @@
                             <span class="word">{{ $t("checkEverySecond", [ monitor.interval ]) }}</span>
                         </template>
                         <span v-else class="word">
-                            <font-awesome-icon icon="folder" /> {{ $t("Folder Only") }}
+                            <font-awesome-icon :icon="monitor.agency ? 'building' : 'folder'" /> {{ monitor.agency ? $t("Agency") : $t("Folder") }}
                         </span>
                     </div>
                     <div class="col-md-4 text-center">
@@ -374,11 +382,7 @@ export default {
             // eslint-disable-next-line vue/no-side-effects-in-computed-properties
             this.cacheTime = Date.now();
 
-            if (this.monitor.id in this.$root.lastHeartbeatList && this.$root.lastHeartbeatList[this.monitor.id]) {
-                return this.$root.lastHeartbeatList[this.monitor.id];
-            }
-
-            return {
+            return this.$root.getLastHeartbeat(this.monitor.id) ?? {
                 status: -1,
             };
         },
@@ -424,7 +428,7 @@ export default {
                 return false;
             }
 
-            const status = this.$root.lastHeartbeatList[this.monitor.id]?.status;
+            const status = this.$root.getLastHeartbeat(this.monitor.id)?.status;
 
             return status === DOWN || status === PENDING;
         },
@@ -444,8 +448,11 @@ export default {
             return this.tlsInfo != null && this.toggleCertInfoBox;
         },
 
-        group() {
-            return this.monitor.path.slice(0, -1).join(" / ");
+        /**
+         * @returns {object[]} Groups holding the monitor, from the agency (if any) down to its direct parent
+         */
+        ancestors() {
+            return this.$root.getMonitorAncestors(this.monitor.id);
         },
 
         pushURL() {
@@ -749,6 +756,13 @@ export default {
     gap: 10px;
     align-items: center;
     justify-content: space-between;
+}
+
+.monitor-path {
+    .separator {
+        margin: 0 0.4em;
+        color: $secondary-text;
+    }
 }
 
 @media (max-width: 767px) {

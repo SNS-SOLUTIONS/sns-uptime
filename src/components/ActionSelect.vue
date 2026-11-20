@@ -1,7 +1,12 @@
 <template>
     <div class="input-group mb-3">
         <select :id="id" ref="select" v-model="model" class="form-select" :disabled="disabled" :required="required">
-            <option v-for="option in options" :key="option" :value="option.value" :disabled="option.disabled">{{ option.label }}</option>
+            <template v-for="(option, index) in options" :key="index">
+                <optgroup v-if="option.options" :label="option.label">
+                    <option v-for="child in option.options" :key="child.value" :value="child.value" :disabled="child.disabled">{{ child.label }}</option>
+                </optgroup>
+                <option v-else :value="option.value" :disabled="option.disabled">{{ option.label }}</option>
+            </template>
         </select>
         <button type="button" class="btn btn-outline-primary" :class="{ disabled: actionDisabled }" :aria-label="actionAriaLabel" @click="action()">
             <font-awesome-icon :icon="icon" aria-hidden="true" />
@@ -16,6 +21,10 @@
  */
 export default {
     props: {
+        /**
+         * The choices: { label, value, disabled }. An entry holding its own
+         * `options` list instead of a value is shown as a group of choices.
+         */
         options: {
             type: Array,
             default: () => [],

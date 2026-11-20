@@ -219,8 +219,12 @@ class UptimeKumaServer {
             userID,
         ]);
 
+        // Required here, the monitor model itself depends on this file
+        const Monitor = require("./model/monitor");
+        const preloadData = await Monitor.preparePreloadData(monitorList);
+
         for (let monitor of monitorList) {
-            result[monitor.id] = await monitor.toJSON();
+            result[monitor.id] = await monitor.toJSON(true, preloadData);
         }
 
         return result;
@@ -285,6 +289,23 @@ class UptimeKumaServer {
             return this.maintenanceList[maintenanceID];
         }
         return null;
+    }
+
+    /**
+     * Maintenances going on right now. Most of the time there is none, which
+     * spares the monitors from looking up their own maintenances.
+     * @returns {Promise<number[]>} IDs of the maintenances in progress
+     */
+    async getActiveMaintenanceIDs() {
+        const result = [];
+
+        for (const maintenance of Object.values(this.maintenanceList)) {
+            if (await maintenance.isUnderMaintenance()) {
+                result.push(maintenance.id);
+            }
+        }
+
+        return result;
     }
 
     /**

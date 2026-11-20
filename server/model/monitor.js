@@ -28,6 +28,50 @@ const http = require("http");
 const rootCertificates = rootCertificatesFingerprints();
 
 /**
+ * Groups holding a monitor, read from the tree loaded by preparePreloadData()
+ * @param {Map<number, object>} tree Every monitor, by ID
+ * @param {number} monitorID ID of the monitor
+ * @returns {object[]} From the direct parent up to the root
+ */
+function getAncestorsFromTree(tree, monitorID) {
+    const ancestors = [];
+    const visited = new Set([ monitorID ]);
+    let parent = tree.get(tree.get(monitorID)?.parent);
+
+    while (parent !== undefined && !visited.has(parent.id)) {
+        visited.add(parent.id);
+        ancestors.push(parent);
+        parent = tree.get(parent.parent);
+    }
+
+    return ancestors;
+}
+
+/**
+ * Same as Monitor.getAllChildrenIDs(), read from the tree loaded by
+ * preparePreloadData()
+ * @param {Map<number, object>} tree Every monitor, by ID
+ * @param {number} monitorID ID of the monitor
+ * @returns {number[]} IDs of all the monitors below, depth first
+ */
+function getDescendantIDsFromTree(tree, monitorID) {
+    const result = [];
+    const visited = new Set([ monitorID ]);
+    const walk = (id) => {
+        for (const childID of tree.get(id)?.childrenIDs ?? []) {
+            if (!visited.has(childID)) {
+                visited.add(childID);
+                result.push(childID);
+                walk(childID);
+            }
+        }
+    };
+
+    walk(monitorID);
+    return result;
+}
+
+/**
  * status:
  *      0 = DOWN
  *      1 = UP
@@ -70,24 +114,87 @@ class Monitor extends BeanModel {
     }
 
     /**
+     * Load, in a handful of queries, what toJSON() needs besides the monitor
+     * itself, for a whole list of monitors. Serializing them one by one used
+     * to cost about twenty queries each: thousands for the list of a large
+     * instance, sent again on every login and every change.
+     * @param {Monitor[]} monitorList Monitors about to be serialized
+     * @returns {Promise<object>} Data to hand over to toJSON()
+     */
+    static async preparePreloadData(monitorList) {
+        const monitorIDs = new Set(monitorList.map(monitor => monitor.id));
+
+        // The whole tree: paths, children and inherited states are read from it
+        const tree = new Map();
+        for (const row of await R.getAll("SELECT id, name, parent, active FROM monitor ORDER BY id")) {
+            tree.set(row.id, {
+                ...row,
+                childrenIDs: [],
+            });
+        }
+        for (const node of tree.values()) {
+            tree.get(node.parent)?.childrenIDs.push(node.id);
+        }
+
+        const notificationIDList = new Map();
+        for (const row of await R.getAll("SELECT monitor_id, notification_id FROM monitor_notification")) {
+            if (monitorIDs.has(row.monitor_id)) {
+                if (!notificationIDList.has(row.monitor_id)) {
+                    notificationIDList.set(row.monitor_id, {});
+                }
+                notificationIDList.get(row.monitor_id)[row.notification_id] = true;
+            }
+        }
+
+        // Same columns and order as getTags()
+        const tags = new Map();
+        for (const row of await R.getAll("SELECT mt.*, tag.name, tag.color FROM monitor_tag mt JOIN tag ON mt.tag_id = tag.id ORDER BY tag.name")) {
+            if (monitorIDs.has(row.monitor_id)) {
+                if (!tags.has(row.monitor_id)) {
+                    tags.set(row.monitor_id, []);
+                }
+                tags.get(row.monitor_id).push(row);
+            }
+        }
+
+        // Monitors attached to a maintenance going on right now. Their groups
+        // count too, so this is not limited to the monitors being serialized.
+        const underMaintenance = new Set();
+        const activeMaintenanceIDs = await UptimeKumaServer.getInstance().getActiveMaintenanceIDs();
+        if (activeMaintenanceIDs.length > 0) {
+            for (const row of await R.getAll("SELECT monitor_id, maintenance_id FROM monitor_maintenance")) {
+                if (activeMaintenanceIDs.includes(row.maintenance_id)) {
+                    underMaintenance.add(row.monitor_id);
+                }
+            }
+        }
+
+        return {
+            tree,
+            notificationIDList,
+            tags,
+            underMaintenance,
+        };
+    }
+
+    /**
      * Return an object that ready to parse to JSON
      * @param {boolean} includeSensitiveData Include sensitive data in
      * JSON
+     * @param {object|null} preloadData What preparePreloadData() loaded for
+     * the list this monitor belongs to, loaded for this monitor alone if not
+     * given
      * @returns {Promise<object>} Object ready to parse
      */
-    async toJSON(includeSensitiveData = true) {
+    async toJSON(includeSensitiveData = true, preloadData = null) {
+        preloadData ??= await Monitor.preparePreloadData([ this ]);
 
-        let notificationIDList = {};
+        const ancestors = getAncestorsFromTree(preloadData.tree, this.id);
 
-        let list = await R.find("monitor_notification", " monitor_id = ? ", [
-            this.id,
-        ]);
-
-        for (let bean of list) {
-            notificationIDList[bean.notification_id] = true;
-        }
-
-        const tags = await this.getTags();
+        // Same values as isParentActive(): the state of the first paused
+        // group above the monitor, true if there is none
+        const pausedAncestor = ancestors.find(ancestor => !ancestor.active);
+        const parentActive = pausedAncestor ? pausedAncestor.active : true;
 
         let screenshot = null;
 
@@ -95,7 +202,7 @@ class Monitor extends BeanModel {
             screenshot = "/screenshots/" + jwt.sign(this.id, UptimeKumaServer.getInstance().jwtSecret) + ".png";
         }
 
-        const path = await this.getPath();
+        const path = [ ...ancestors.map(ancestor => ancestor.name).reverse(), this.name ];
         const pathName = path.join(" / ");
 
         let data = {
@@ -105,17 +212,18 @@ class Monitor extends BeanModel {
             path,
             pathName,
             parent: this.parent,
-            childrenIDs: await Monitor.getAllChildrenIDs(this.id),
+            childrenIDs: getDescendantIDsFromTree(preloadData.tree, this.id),
             url: this.url,
             method: this.method,
             hostname: this.hostname,
             port: this.port,
             maxretries: this.maxretries,
             weight: this.weight,
-            active: await this.isActive(),
-            forceInactive: !await Monitor.isParentActive(this.id),
+            active: (this.active === 1) && parentActive,
+            forceInactive: !parentActive,
             type: this.type,
             folderOnly: this.isFolderOnly(),
+            agency: this.isAgency(),
             timeout: this.timeout,
             interval: this.interval,
             retryInterval: this.retryInterval,
@@ -134,9 +242,11 @@ class Monitor extends BeanModel {
             docker_container: this.docker_container,
             docker_host: this.docker_host,
             proxyId: this.proxy_id,
-            notificationIDList,
-            tags: tags,
-            maintenance: await Monitor.isUnderMaintenance(this.id),
+            notificationIDList: preloadData.notificationIDList.get(this.id) ?? {},
+            tags: preloadData.tags.get(this.id) ?? [],
+            // Under maintenance if the monitor or one of its groups is
+            maintenance: [ this.id, ...ancestors.map(ancestor => ancestor.id) ]
+                .some(id => preloadData.underMaintenance.has(id)),
             mqttTopic: this.mqttTopic,
             mqttSuccessMessage: this.mqttSuccessMessage,
             mqttCheckType: this.mqttCheckType,
@@ -281,6 +391,37 @@ class Monitor extends BeanModel {
      */
     isFolderOnly() {
         return this.type === "group" && Boolean(this.folderOnly);
+    }
+
+    /**
+     * An agency sits at the top of the tree and gathers the folders and
+     * monitors of one site (MARSEILLE → folder → monitor). In every other
+     * respect it is a folder only group, so it never notifies on its own.
+     * @returns {boolean} Is this monitor an agency?
+     */
+    isAgency() {
+        return this.type === "group" && Boolean(this.agency);
+    }
+
+    /**
+     * Apply the role chosen for a group, keeping the flags consistent whatever
+     * the browser sent: an agency is a folder only group that always sits at
+     * the root of the tree, and neither flag means anything outside a group.
+     * The type and the parent must be set beforehand.
+     * @param {object} role Role sent by the browser
+     * @param {boolean} role.folderOnly Should the group act as a plain folder?
+     * @param {boolean} role.agency Should the group be an agency?
+     * @returns {void}
+     */
+    applyGroupRole({ folderOnly, agency }) {
+        const isGroup = this.type === "group";
+
+        this.agency = isGroup && Boolean(agency);
+        this.folderOnly = this.agency || (isGroup && Boolean(folderOnly));
+
+        if (this.agency) {
+            this.parent = null;
+        }
     }
 
     /**
@@ -1351,7 +1492,7 @@ class Monitor extends BeanModel {
                 text = "🔴 Down";
             }
 
-            let msg = `[${monitor.name}] [${text}] ${bean.msg}`;
+            let msg = `${await monitor.getNotificationTitle()} [${text}] ${bean.msg}`;
 
             for (let notification of notificationList) {
                 try {
@@ -1461,7 +1602,7 @@ class Monitor extends BeanModel {
         for (let notification of notificationList) {
             try {
                 log.debug("monitor", "Sending to " + notification.name);
-                await Notification.send(JSON.parse(notification.config), `[${this.name}][${this.url}] ${certType} certificate ${certCN} will be expired in ${daysRemaining} days`);
+                await Notification.send(JSON.parse(notification.config), `${await this.getNotificationTitle()}[${this.url}] ${certType} certificate ${certCN} will be expired in ${daysRemaining} days`);
                 sent = true;
             } catch (e) {
                 log.error("monitor", "Cannot send cert notification to " + notification.name);
@@ -1495,16 +1636,20 @@ class Monitor extends BeanModel {
      * @returns {Promise<boolean>} Is the monitor under maintenance
      */
     static async isUnderMaintenance(monitorID) {
+        // Checked on every beat. Most of the time no maintenance is going on,
+        // and then there is no need to look up the monitor and its groups.
+        const activeMaintenanceIDs = await UptimeKumaServer.getInstance().getActiveMaintenanceIDs();
+        if (activeMaintenanceIDs.length === 0) {
+            return false;
+        }
+
         const maintenanceIDList = await R.getCol(`
             SELECT maintenance_id FROM monitor_maintenance
             WHERE monitor_id = ?
         `, [ monitorID ]);
 
-        for (const maintenanceID of maintenanceIDList) {
-            const maintenance = await UptimeKumaServer.getInstance().getMaintenance(maintenanceID);
-            if (maintenance && await maintenance.isUnderMaintenance()) {
-                return true;
-            }
+        if (maintenanceIDList.some(maintenanceID => activeMaintenanceIDs.includes(maintenanceID))) {
+            return true;
         }
 
         const parent = await Monitor.getParent(monitorID);
@@ -1577,6 +1722,43 @@ class Monitor extends BeanModel {
         }
 
         return path;
+    }
+
+    /**
+     * Gets the agency the monitor is filed under. An agency always sits at the
+     * root, so it can only be the topmost ancestor.
+     * @returns {Promise<LooseObject<any>|null>} The agency, or null if the monitor is not under one
+     */
+    async getAgency() {
+        let root = null;
+        let parent = await Monitor.getParent(this.id);
+
+        while (parent !== null) {
+            root = parent;
+            parent = await Monitor.getParent(parent.id);
+        }
+
+        if (root !== null && root.type === "group" && Boolean(root.agency)) {
+            return root;
+        }
+
+        return null;
+    }
+
+    /**
+     * How the monitor introduces itself in a notification: its name, preceded
+     * by its agency when it has one, so an alert tells straight away which
+     * site is affected.
+     * @returns {Promise<string>} "[MARSEILLE] [Web server]", or "[Web server]" outside any agency
+     */
+    async getNotificationTitle() {
+        const agency = await this.getAgency();
+
+        if (agency !== null) {
+            return `[${agency.name}] [${this.name}]`;
+        }
+
+        return `[${this.name}]`;
     }
 
     /**

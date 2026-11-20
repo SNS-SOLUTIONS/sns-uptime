@@ -1,4 +1,5 @@
 import { io } from "socket.io-client";
+import { markRaw } from "vue";
 import { useToast } from "vue-toastification";
 import jwtDecode from "jwt-decode";
 import Favico from "favico.js";
@@ -231,6 +232,10 @@ export default {
             });
 
             socket.on("heartbeat", (data) => {
+                // A heartbeat never changes once received: Vue only has to follow
+                // the lists, not every field of the tens of thousands of them
+                markRaw(data);
+
                 if (! (data.monitorID in this.heartbeatList)) {
                     this.heartbeatList[data.monitorID] = [];
                 }
@@ -250,16 +255,20 @@ export default {
                     // A folder only group is not a probe, it must not pop a toast
                     // of its own: the monitor that actually failed already did.
                     if (monitor !== undefined && !monitor.folderOnly) {
+                        // Same wording as the notifications: the agency first, if any
+                        const agency = this.getMonitorAgency(monitor.id);
+                        const title = agency ? `[${agency.name}] [${monitor.name}]` : `[${monitor.name}]`;
+
                         if (data.status === 0) {
-                            toast.error(`[${monitor.name}] [DOWN] ${data.msg}`, {
+                            toast.error(`${title} [DOWN] ${data.msg}`, {
                                 timeout: getToastErrorTimeout(),
                             });
                         } else if (data.status === 1) {
-                            toast.success(`[${monitor.name}] [Up] ${data.msg}`, {
+                            toast.success(`${title} [Up] ${data.msg}`, {
                                 timeout: getToastSuccessTimeout(),
                             });
                         } else {
-                            toast(`[${monitor.name}] ${data.msg}`);
+                            toast(`${title} ${data.msg}`);
                         }
                     }
 
@@ -268,6 +277,8 @@ export default {
             });
 
             socket.on("heartbeatList", (monitorID, data, overwrite = false) => {
+                data.forEach(markRaw);
+
                 if (! (monitorID in this.heartbeatList) || overwrite) {
                     this.heartbeatList[monitorID] = data;
                 } else {
@@ -566,6 +577,59 @@ export default {
         },
 
         /**
+         * Climb the tree from a monitor up to the root
+         * @param {number} monitorID ID of the monitor
+         * @returns {object[]} Its groups, from the topmost one (the agency,
+         * if any) down to its direct parent
+         */
+        getMonitorAncestors(monitorID) {
+            const ancestors = [];
+            // Guards against a broken tree, a loop would never end otherwise
+            const visited = new Set([ Number(monitorID) ]);
+            let parentID = this.monitorList[monitorID]?.parent;
+
+            while (parentID !== null && parentID !== undefined && !visited.has(parentID)) {
+                const parent = this.monitorList[parentID];
+
+                if (parent === undefined) {
+                    break;
+                }
+
+                visited.add(parentID);
+                ancestors.unshift(parent);
+                parentID = parent.parent;
+            }
+
+            return ancestors;
+        },
+
+        /**
+         * Get the agency a monitor is filed under. An agency always sits at the
+         * root, so it can only be the topmost ancestor.
+         * @param {number} monitorID ID of the monitor
+         * @returns {?object} The agency, or null if the monitor is not under one
+         */
+        getMonitorAgency(monitorID) {
+            const root = this.getMonitorAncestors(monitorID)[0];
+
+            return root?.agency ? root : null;
+        },
+
+        /**
+         * Last heartbeat of a monitor, read from its own list: whoever uses it
+         * only follows the heartbeats of that monitor. Going through
+         * lastHeartbeatList, rebuilt on every heartbeat of any monitor, made
+         * each of the 500 lines of a large list react to all of them.
+         * @param {number} monitorID ID of the monitor
+         * @returns {object|undefined} Its last heartbeat, if any
+         */
+        getLastHeartbeat(monitorID) {
+            const list = this.heartbeatList[monitorID];
+
+            return list ? list[list.length - 1] : undefined;
+        },
+
+        /**
          * Get list of maintenances
          * @param {socketCB} callback Callback for socket response
          * @returns {void}
@@ -837,6 +901,25 @@ export default {
             return result;
         },
 
+        /**
+         * Monitors held by each group. Built once for the whole list, instead
+         * of every line of the monitor list going through all the monitors to
+         * find its own children (250 000 checks for 500 monitors).
+         * @returns {{[parentID: string]: object[]}} Child monitors, by parent ID
+         */
+        monitorChildrenList() {
+            const result = {};
+
+            for (const monitor of Object.values(this.monitorList)) {
+                if (monitor.parent !== null && monitor.parent !== undefined) {
+                    result[monitor.parent] ??= [];
+                    result[monitor.parent].push(monitor);
+                }
+            }
+
+            return result;
+        },
+
         statusList() {
             let result = {};
 
@@ -891,7 +974,7 @@ export default {
             };
 
             for (let monitorID in this.$root.monitorList) {
-                let beat = this.$root.lastHeartbeatList[monitorID];
+                let beat = this.getLastHeartbeat(monitorID);
                 let monitor = this.$root.monitorList[monitorID];
 
                 // A folder is not a probe, it must not weigh on the counters

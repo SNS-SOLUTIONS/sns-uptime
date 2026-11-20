@@ -66,7 +66,12 @@
                     </thead>
                     <tbody>
                         <tr v-for="(beat, index) in displayedRecords" :key="index" :class="{ 'shadow-box': $root.windowWidth <= 550}">
-                            <td class="name-column"><router-link :to="`/dashboard/${beat.monitorID}`">{{ $root.monitorList[beat.monitorID]?.name }}</router-link></td>
+                            <td class="name-column">
+                                <router-link :to="`/dashboard/${beat.monitorID}`">{{ $root.monitorList[beat.monitorID]?.name }}</router-link>
+                                <span v-if="agencyName(beat.monitorID)" class="agency-name">
+                                    <font-awesome-icon icon="building" /> {{ agencyName(beat.monitorID) }}
+                                </span>
+                            </td>
                             <td><Status :status="beat.status" /></td>
                             <td :class="{ 'border-0':! beat.msg}"><Datetime :value="beat.time" /></td>
                             <td class="border-0">{{ beat.msg }}</td>
@@ -154,6 +159,16 @@ export default {
     },
 
     methods: {
+        /**
+         * Name of the agency a monitor is filed under, so an event says which
+         * site it comes from
+         * @param {number} monitorID ID of the monitor
+         * @returns {?string} Name of the agency, or null if the monitor is not under one
+         */
+        agencyName(monitorID) {
+            return this.$root.getMonitorAgency(monitorID)?.name ?? null;
+        },
+
         /**
          * Updates the displayed records when a new important heartbeat arrives.
          * @param {object} heartbeat - The heartbeat object received.
@@ -247,6 +262,13 @@ table {
         table-layout: fixed;
         overflow-wrap: break-word;
     }
+}
+
+.agency-name {
+    margin-left: 0.5em;
+    color: $secondary-text;
+    font-size: 0.9em;
+    white-space: nowrap;
 }
 
 @media screen and (max-width: 1280px) {

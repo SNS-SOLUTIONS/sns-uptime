@@ -24,6 +24,48 @@
 <script>
 import dayjs from "dayjs";
 
+/**
+ * Bars on screen right now, followed by a single observer shared by all the
+ * bars: a large monitor list holds hundreds of them.
+ */
+const barsByElement = new WeakMap();
+let visibilityObserver = null;
+
+/**
+ * Start following whether a bar is on screen
+ * @param {Element} element Element of the bar
+ * @param {object} bar Component of the bar, its onScreen flag is kept up to date
+ * @returns {void}
+ */
+function observeVisibility(element, bar) {
+    if (typeof IntersectionObserver === "undefined") {
+        return;
+    }
+
+    visibilityObserver ??= new IntersectionObserver((entries) => {
+        for (const entry of entries) {
+            const target = barsByElement.get(entry.target);
+
+            if (target) {
+                target.onScreen = entry.isIntersecting;
+            }
+        }
+    });
+
+    barsByElement.set(element, bar);
+    visibilityObserver.observe(element);
+}
+
+/**
+ * Stop following a bar
+ * @param {Element} element Element of the bar
+ * @returns {void}
+ */
+function unobserveVisibility(element) {
+    barsByElement.delete(element);
+    visibilityObserver?.unobserve(element);
+}
+
 export default {
     props: {
         /** Size of the heartbeat bar */
@@ -50,6 +92,8 @@ export default {
             beatMargin: 4,
             move: false,
             maxBeat: -1,
+            // Kept up to date by the visibility observer, when there is one
+            onScreen: true,
         };
     },
     computed: {
@@ -64,6 +108,13 @@ export default {
             } else {
                 return this.heartbeatList;
             }
+        },
+
+        /**
+         * @returns {object|undefined} Newest beat of the bar
+         */
+        lastBeat() {
+            return this.beatList?.[this.beatList.length - 1];
         },
 
         /**
@@ -193,16 +244,26 @@ export default {
         }
     },
     watch: {
-        beatList: {
-            handler(val, oldVal) {
-                this.move = true;
+        // A new beat came in: slide the bar by one. Watching the newest beat
+        // is enough, a deep watcher went through every beat of the list on
+        // each change (and made every one of them reactive, for 500 bars).
+        lastBeat() {
+            // Only where it can be seen: with hundreds of bars, a beat comes
+            // in several times a second, and sliding the bars out of sight
+            // kept the browser drawing frames without a break
+            if (!this.onScreen) {
+                return;
+            }
 
-                setTimeout(() => {
-                    this.move = false;
-                }, 300);
-            },
-            deep: true,
+            this.move = true;
+
+            setTimeout(() => {
+                this.move = false;
+            }, 300);
         },
+    },
+    beforeUnmount() {
+        unobserveVisibility(this.$refs.wrap);
     },
     unmounted() {
         window.removeEventListener("resize", this.resize);
@@ -237,6 +298,7 @@ export default {
 
         window.addEventListener("resize", this.resize);
         this.resize();
+        observeVisibility(this.$refs.wrap, this);
     },
     methods: {
         /**
