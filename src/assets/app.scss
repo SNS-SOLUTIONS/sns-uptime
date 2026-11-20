@@ -35,6 +35,15 @@ textarea.form-control {
     color: $maintenance !important;
 }
 
+.bg-acknowledged {
+    color: white !important;
+    background-color: $acknowledged !important;
+}
+
+.text-acknowledged {
+    color: $acknowledged !important;
+}
+
 .incident a,
 .bg-maintenance a {
     color: inherit;

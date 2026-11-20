@@ -19,6 +19,7 @@ const Gamedig = require("gamedig");
 const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
 const { UptimeCalculator } = require("../uptime-calculator");
+const Acknowledgement = require("../acknowledgement");
 const { CookieJar } = require("tough-cookie");
 const { HttpsCookieAgent } = require("http-cookie-agent/http");
 const https = require("https");
@@ -114,6 +115,7 @@ class Monitor extends BeanModel {
             active: await this.isActive(),
             forceInactive: !await Monitor.isParentActive(this.id),
             type: this.type,
+            folderOnly: this.isFolderOnly(),
             timeout: this.timeout,
             interval: this.interval,
             retryInterval: this.retryInterval,
@@ -269,6 +271,16 @@ class Monitor extends BeanModel {
      */
     getIgnoreTls() {
         return Boolean(this.ignoreTls);
+    }
+
+    /**
+     * A group flagged as folder only is there to organise other monitors. It
+     * still aggregates the status of its children so the tree stays readable,
+     * but it never notifies and is left out of the uptime figures.
+     * @returns {boolean} Is this monitor a plain folder?
+     */
+    isFolderOnly() {
+        return this.type === "group" && Boolean(this.folderOnly);
     }
 
     /**
@@ -944,6 +956,11 @@ class Monitor extends BeanModel {
                 // Reset down count
                 bean.downCount = 0;
 
+                // An acknowledgement only covers the outage it was taken for
+                if (bean.status === UP) {
+                    await Acknowledgement.resolve(this, bean, io);
+                }
+
                 // Clear Status Page Cache
                 log.debug("monitor", `[${this.name}] apicache clear`);
                 apicache.clear();
@@ -956,9 +973,14 @@ class Monitor extends BeanModel {
                 if (bean.status === DOWN && this.resendInterval > 0) {
                     ++bean.downCount;
                     if (bean.downCount >= this.resendInterval) {
-                        // Send notification again, because we are still DOWN
-                        log.debug("monitor", `[${this.name}] sendNotification again: Down Count: ${bean.downCount} | Resend Interval: ${this.resendInterval}`);
-                        await Monitor.sendNotification(isFirstBeat, this, bean);
+                        if (await Acknowledgement.isAcknowledged(this.id)) {
+                            // Someone took the incident, no need to keep ringing
+                            log.debug("monitor", `[${this.name}] acknowledged, skipping the reminder`);
+                        } else {
+                            // Send notification again, because we are still DOWN
+                            log.debug("monitor", `[${this.name}] sendNotification again: Down Count: ${bean.downCount} | Resend Interval: ${this.resendInterval}`);
+                            await Monitor.sendNotification(isFirstBeat, this, bean);
+                        }
 
                         // Reset down count
                         bean.downCount = 0;
@@ -1313,6 +1335,12 @@ class Monitor extends BeanModel {
      * @returns {void}
      */
     static async sendNotification(isFirstBeat, monitor, bean) {
+        // A folder is not a probe, it never alerts on its own. Its children do.
+        if (monitor.type === "group" && Boolean(monitor.folderOnly)) {
+            log.debug("monitor", `[${monitor.name}] Folder only group, skipping notification`);
+            return;
+        }
+
         if (!isFirstBeat || bean.status === DOWN) {
             const notificationList = await Monitor.getNotificationList(monitor);
 

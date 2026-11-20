@@ -46,6 +46,10 @@ export default {
         },
 
         color() {
+            if (this.acknowledged) {
+                return "acknowledged";
+            }
+
             if (this.lastHeartBeat.status === MAINTENANCE) {
                 return "maintenance";
             }
@@ -63,6 +67,17 @@ export default {
             }
 
             return "secondary";
+        },
+
+        /**
+         * @returns {boolean} Has someone taken responsibility for this incident?
+         */
+        acknowledged() {
+            if (this.lastHeartBeat.status !== DOWN && this.lastHeartBeat.status !== PENDING) {
+                return false;
+            }
+
+            return !!this.$root.acknowledgementList?.[this.monitor.id];
         },
 
         lastHeartBeat() {

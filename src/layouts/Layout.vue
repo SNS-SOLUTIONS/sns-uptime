@@ -22,30 +22,45 @@
 
             <ul class="nav nav-pills">
                 <li v-if="$root.loggedIn" class="nav-item me-2">
-                    <router-link to="/manage-status-page" class="nav-link">
-                        <font-awesome-icon icon="stream" /> {{ $t("Status Pages") }}
+                    <router-link
+                        to="/manage-status-page"
+                        class="nav-link nav-link-icon"
+                        :title="$t('Status Pages')"
+                        :aria-label="$t('Status Pages')"
+                    >
+                        <font-awesome-icon icon="stream" />
                     </router-link>
                 </li>
                 <li v-if="$root.loggedIn" class="nav-item me-2">
-                    <router-link to="/dashboard" class="nav-link">
-                        <font-awesome-icon icon="tachometer-alt" /> {{ $t("Dashboard") }}
+                    <router-link
+                        to="/dashboard"
+                        class="nav-link nav-link-icon"
+                        :title="$t('Dashboard')"
+                        :aria-label="$t('Dashboard')"
+                    >
+                        <font-awesome-icon icon="tachometer-alt" />
                     </router-link>
                 </li>
                 <li v-if="$root.loggedIn" class="nav-item">
                     <div class="dropdown dropdown-profile-pic">
                         <div class="nav-link" data-bs-toggle="dropdown">
-                            <div class="profile-pic">{{ $root.usernameFirstChar }}</div>
+                            <div class="profile-pic">{{ $root.userInitials }}</div>
+                            <span v-if="$root.displayName" class="profile-name">{{ $root.displayName }}</span>
                             <font-awesome-icon icon="angle-down" />
                         </div>
 
                         <!-- Header's Dropdown Menu -->
                         <ul class="dropdown-menu">
-                            <!-- Username -->
+                            <!-- Current user -->
                             <li>
-                                <i18n-t v-if="$root.username != null" tag="span" keypath="signedInDisp" class="dropdown-item-text">
-                                    <strong>{{ $root.username }}</strong>
-                                </i18n-t>
-                                <span v-if="$root.username == null" class="dropdown-item-text">{{ $t("signedInDispDisabled") }}</span>
+                                <div v-if="$root.username != null" class="dropdown-item-text user-identity">
+                                    <span class="user-name">{{ $root.displayName }}</span>
+                                    <span v-if="$root.userEmail" class="user-email">{{ $root.userEmail }}</span>
+                                    <span v-if="$root.forwardAuth.active" class="user-provider">
+                                        <font-awesome-icon icon="shield-alt" /> {{ $t("signedInWithForwardAuth") }}
+                                    </span>
+                                </div>
+                                <span v-else class="dropdown-item-text">{{ $t("signedInDispDisabled") }}</span>
                             </li>
 
                             <li><hr class="dropdown-divider"></li>
@@ -69,7 +84,7 @@
                                 </a>
                             </li>
 
-                            <li v-if="$root.loggedIn && $root.socket.token !== 'autoLogin'">
+                            <li v-if="$root.canLogout">
                                 <button class="dropdown-item" @click="$root.logout">
                                     <font-awesome-icon icon="sign-out-alt" />
                                     {{ $t("Logout") }}
@@ -322,6 +337,29 @@ main {
             padding-bottom: 0.7rem;
         }
 
+        .user-identity {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+            max-width: 260px;
+
+            .user-name {
+                font-weight: bold;
+            }
+
+            .user-email,
+            .user-provider {
+                font-size: 12px;
+                opacity: 0.7;
+                overflow: hidden;
+                text-overflow: ellipsis;
+            }
+
+            .user-provider {
+                margin-top: 2px;
+            }
+        }
+
         .dropdown-item {
             padding: 0.7rem 1rem;
         }
@@ -350,6 +388,7 @@ main {
         display: flex;
         align-items: center;
         justify-content: center;
+        flex-shrink: 0;
         color: white;
         background-color: $primary;
         width: 24px;
@@ -359,6 +398,19 @@ main {
         font-weight: bold;
         font-size: 10px;
     }
+
+    .profile-name {
+        max-width: 180px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+}
+
+// The label lives in the tooltip once only the icon is shown
+.nav-link-icon {
+    text-align: center;
+    min-width: 42px;
 }
 
 .dark {

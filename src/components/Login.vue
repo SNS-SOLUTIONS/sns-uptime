@@ -4,6 +4,10 @@
             <form @submit.prevent="submit">
                 <h1 class="h3 mb-3 fw-normal" />
 
+                <div v-if="$root.forwardAuth.error" class="alert alert-warning" role="alert">
+                    {{ $root.forwardAuth.error }}
+                </div>
+
                 <div v-if="!tokenRequired" class="form-floating">
                     <input id="floatingInput" v-model="username" type="text" class="form-control" placeholder="Username" autocomplete="username" required>
                     <label for="floatingInput">{{ $t("Username") }}</label>

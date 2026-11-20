@@ -21,6 +21,26 @@
         </div>
 
         <div class="my-4 pt-4">
+            <h5 class="my-4 settings-subheading">{{ $t("settingsAcknowledgement") }}</h5>
+            <p>{{ $t("acknowledgementNotificationDescription") }}</p>
+
+            <div class="my-4 col-12 col-xl-6">
+                <label for="acknowledgementNotificationID" class="form-label">
+                    {{ $t("acknowledgementNotification") }}
+                </label>
+                <select id="acknowledgementNotificationID" v-model="settings.acknowledgementNotificationID" class="form-select">
+                    <option :value="null">{{ $t("acknowledgementNotificationNone") }}</option>
+                    <option v-for="notification in smtpNotificationList" :key="notification.id" :value="notification.id">
+                        {{ notification.name }}
+                    </option>
+                </select>
+                <div v-if="smtpNotificationList.length === 0" class="form-text">
+                    {{ $t("acknowledgementNotificationNoSmtp") }}
+                </div>
+            </div>
+        </div>
+
+        <div class="my-4 pt-4">
             <h5 class="my-4 settings-subheading">{{ $t("monitorToastMessagesLabel") }}</h5>
             <p>{{ $t("monitorToastMessagesDescription") }}</p>
 
@@ -109,6 +129,20 @@ export default {
         },
         settingsLoaded() {
             return this.$parent.$parent.$parent.settingsLoaded;
+        },
+        /**
+         * Only an SMTP notification can be readdressed to the person who
+         * acknowledged an incident, the other providers have a fixed target.
+         * @returns {object[]} SMTP notifications available
+         */
+        smtpNotificationList() {
+            return this.$root.notificationList.filter(notification => {
+                try {
+                    return JSON.parse(notification.config).type === "smtp";
+                } catch (e) {
+                    return false;
+                }
+            });
         },
     },
 

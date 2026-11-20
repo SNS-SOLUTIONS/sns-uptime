@@ -34,6 +34,12 @@ export default {
                 initedSocketIO: false,
             },
             username: null,
+            userProfile: null,
+            forwardAuth: {
+                active: false,
+                logoutURL: null,
+                error: null,
+            },
             remember: (localStorage.remember !== "0"),
             allowLoginDialog: false,        // Allowed to show login dialog, but "loggedIn" have to be true too. This exists because prevent the login dialog show 0.1s in first before the socket server auth-ed.
             loggedIn: false,
@@ -47,6 +53,7 @@ export default {
             notificationList: [],
             dockerHostList: [],
             remoteBrowserList: [],
+            acknowledgementList: {},
             statusPageListLoaded: false,
             statusPageList: [],
             proxyList: [],
@@ -127,9 +134,40 @@ export default {
                 this.storage().token = "autoLogin";
                 this.socket.token = "autoLogin";
                 this.allowLoginDialog = false;
+
+                // Authentication is disabled, there is no user to show
+                this.userProfile = null;
+                this.username = null;
+            });
+
+            // The reverse proxy in front of us (e.g. Authentik) already
+            // authenticated the user, there is no login form to show.
+            socket.on("forwardAuthLogin", (profile) => {
+                this.loggedIn = true;
+                this.allowLoginDialog = false;
+                this.socket.token = "forwardAuth";
+                this.forwardAuth.active = true;
+                this.forwardAuth.logoutURL = profile.logoutURL;
+                this.forwardAuth.error = null;
+
+                // Any leftover JWT is meaningless now, the identity provider owns the session
+                this.storage().removeItem("token");
+            });
+
+            socket.on("forwardAuthFailed", (res) => {
+                this.forwardAuth.error = res.msgi18n ? this.$t(res.msg) : res.msg;
+            });
+
+            socket.on("userProfile", (profile) => {
+                this.userProfile = profile;
+                this.username = profile.username;
             });
 
             socket.on("loginRequired", () => {
+                if (this.loggedIn) {
+                    return;
+                }
+
                 let token = this.storage().token;
                 if (token && token !== "autoLogin") {
                     this.loginByToken(token);
@@ -188,6 +226,10 @@ export default {
                 this.remoteBrowserList = data;
             });
 
+            socket.on("acknowledgementList", (data) => {
+                this.acknowledgementList = data;
+            });
+
             socket.on("heartbeat", (data) => {
                 if (! (data.monitorID in this.heartbeatList)) {
                     this.heartbeatList[data.monitorID] = [];
@@ -203,17 +245,21 @@ export default {
                 // Also toast
                 if (data.important) {
 
-                    if (this.monitorList[data.monitorID] !== undefined) {
+                    const monitor = this.monitorList[data.monitorID];
+
+                    // A folder only group is not a probe, it must not pop a toast
+                    // of its own: the monitor that actually failed already did.
+                    if (monitor !== undefined && !monitor.folderOnly) {
                         if (data.status === 0) {
-                            toast.error(`[${this.monitorList[data.monitorID].name}] [DOWN] ${data.msg}`, {
+                            toast.error(`[${monitor.name}] [DOWN] ${data.msg}`, {
                                 timeout: getToastErrorTimeout(),
                             });
                         } else if (data.status === 1) {
-                            toast.success(`[${this.monitorList[data.monitorID].name}] [Up] ${data.msg}`, {
+                            toast.success(`[${monitor.name}] [Up] ${data.msg}`, {
                                 timeout: getToastSuccessTimeout(),
                             });
                         } else {
-                            toast(`[${this.monitorList[data.monitorID].name}] ${data.msg}`);
+                            toast(`[${monitor.name}] ${data.msg}`);
                         }
                     }
 
@@ -415,12 +461,44 @@ export default {
          * @returns {void}
          */
         logout() {
+            const forwardAuthLogoutURL = this.forwardAuth.active ? this.forwardAuth.logoutURL : null;
+
             socket.emit("logout", () => { });
             this.storage().removeItem("token");
             this.socket.token = null;
             this.loggedIn = false;
             this.username = null;
+            this.userProfile = null;
+            this.acknowledgementList = {};
+            this.forwardAuth.active = false;
+            this.forwardAuth.logoutURL = null;
             this.clearData();
+
+            // Signing out locally is not enough, the identity provider would log
+            // us straight back in on the next request.
+            if (forwardAuthLogoutURL) {
+                location.href = forwardAuthLogoutURL;
+            }
+        },
+
+        /**
+         * Take responsibility for an ongoing incident
+         * @param {number} monitorID ID of the monitor to acknowledge
+         * @param {socketCB} callback Callback for socket response
+         * @returns {void}
+         */
+        acknowledgeMonitor(monitorID, callback) {
+            socket.emit("acknowledgeMonitor", monitorID, callback);
+        },
+
+        /**
+         * Hand an acknowledged incident back to the team
+         * @param {number} monitorID ID of the monitor to release
+         * @param {socketCB} callback Callback for socket response
+         * @returns {void}
+         */
+        unacknowledgeMonitor(monitorID, callback) {
+            socket.emit("unacknowledgeMonitor", monitorID, callback);
         },
 
         /**
@@ -688,12 +766,64 @@ export default {
 
     computed: {
 
-        usernameFirstChar() {
-            if (typeof this.username == "string" && this.username.length >= 1) {
-                return this.username.charAt(0).toUpperCase();
-            } else {
+        /**
+         * Name to show for the logged in user, provided by the identity
+         * provider when forward auth is used, the username otherwise
+         * @returns {?string} Display name of the current user
+         */
+        displayName() {
+            return this.userProfile?.displayName || this.username;
+        },
+
+        /**
+         * @returns {?string} Email of the current user, if it is known
+         */
+        userEmail() {
+            return this.userProfile?.email || null;
+        },
+
+        /**
+         * Logging out is pointless when there is nothing to log out from: with
+         * authentication disabled, or under forward auth without a sign out URL
+         * for the identity provider, which would log us straight back in.
+         * @returns {boolean} Should the logout button be offered?
+         */
+        canLogout() {
+            if (!this.loggedIn || this.socket.token === "autoLogin") {
+                return false;
+            }
+
+            if (this.forwardAuth.active) {
+                return !!this.forwardAuth.logoutURL;
+            }
+
+            return true;
+        },
+
+        /**
+         * Initials shown in the avatar: "Luc Vareille" gives "LV", and so does
+         * a provider username such as "luc.vareille". A single word keeps one
+         * letter, the way avatars usually do.
+         * @returns {string} One or two letters, or the fallback bear
+         */
+        userInitials() {
+            const name = this.displayName;
+
+            if (typeof name !== "string" || name.trim() === "") {
                 return "🐻";
             }
+
+            const words = name.trim().split(/[\s._-]+/).filter(word => word !== "");
+
+            if (words.length === 0) {
+                return "🐻";
+            }
+
+            if (words.length === 1) {
+                return words[0].charAt(0).toUpperCase();
+            }
+
+            return (words[0].charAt(0) + words[words.length - 1].charAt(0)).toUpperCase();
         },
 
         lastHeartbeatList() {
@@ -753,6 +883,7 @@ export default {
                 active: 0,
                 up: 0,
                 down: 0,
+                acknowledged: 0,
                 maintenance: 0,
                 pending: 0,
                 unknown: 0,
@@ -763,11 +894,19 @@ export default {
                 let beat = this.$root.lastHeartbeatList[monitorID];
                 let monitor = this.$root.monitorList[monitorID];
 
+                // A folder is not a probe, it must not weigh on the counters
+                if (monitor && monitor.folderOnly) {
+                    continue;
+                }
+
                 if (monitor && ! monitor.active) {
                     result.pause++;
                 } else if (beat) {
                     result.active++;
-                    if (beat.status === UP) {
+                    if (this.$root.acknowledgementList[monitorID] && (beat.status === DOWN || beat.status === PENDING)) {
+                        // Someone is already on it, it is not waiting for anyone
+                        result.acknowledged++;
+                    } else if (beat.status === UP) {
                         result.up++;
                     } else if (beat.status === DOWN) {
                         result.down++;

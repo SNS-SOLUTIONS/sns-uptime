@@ -1,13 +1,23 @@
 <template>
     <div>
         <div v-if="settingsLoaded" class="my-4">
-            <!-- Change Password -->
+            <!-- Current user -->
             <template v-if="!settings.disableAuth">
-                <p>
-                    {{ $t("Current User") }}: <strong>{{ $root.username }}</strong>
-                    <button v-if="! settings.disableAuth" id="logout-btn" class="btn btn-danger ms-4 me-2 mb-2" @click="$root.logout">{{ $t("Logout") }}</button>
+                <p class="mb-1">
+                    {{ $t("Current User") }}: <strong>{{ $root.displayName }}</strong>
+                    <button v-if="$root.canLogout" id="logout-btn" class="btn btn-danger ms-4 me-2 mb-2" @click="$root.logout">{{ $t("Logout") }}</button>
+                </p>
+                <p v-if="$root.userEmail" class="text-muted">
+                    {{ $root.userEmail }}
                 </p>
 
+                <div v-if="$root.forwardAuth.active" class="alert alert-info" role="alert">
+                    <font-awesome-icon icon="shield-alt" /> {{ $t("forwardAuthManagedByProvider") }}
+                </div>
+            </template>
+
+            <!-- Change Password -->
+            <template v-if="!settings.disableAuth && !$root.forwardAuth.active">
                 <h5 class="my-4 settings-subheading">{{ $t("Change Password") }}</h5>
                 <form class="mb-3" @submit.prevent="savePassword">
                     <div class="mb-3">
@@ -64,7 +74,7 @@
                 </form>
             </template>
 
-            <div v-if="! settings.disableAuth" class="mt-5 mb-3">
+            <div v-if="! settings.disableAuth && ! $root.forwardAuth.active" class="mt-5 mb-3">
                 <h5 class="my-4 settings-subheading">
                     {{ $t("Two Factor Authentication") }}
                 </h5>
@@ -85,7 +95,7 @@
 
                 <div class="mb-4">
                     <button v-if="settings.disableAuth" id="enableAuth-btn" class="btn btn-outline-primary me-2 mb-2" @click="enableAuth">{{ $t("Enable Auth") }}</button>
-                    <button v-if="! settings.disableAuth" id="disableAuth-btn" class="btn btn-primary me-2 mb-2" @click="confirmDisableAuth">{{ $t("Disable Auth") }}</button>
+                    <button v-if="! settings.disableAuth" id="disableAuth-btn" class="btn btn-primary me-2 mb-2" :disabled="$root.forwardAuth.active" @click="confirmDisableAuth">{{ $t("Disable Auth") }}</button>
                 </div>
             </div>
         </div>

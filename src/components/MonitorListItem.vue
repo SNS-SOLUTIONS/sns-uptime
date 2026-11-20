@@ -16,7 +16,15 @@
                 <div class="row">
                     <div class="col-9 col-md-8 small-padding" :class="{ 'monitor-item': $root.userHeartbeatBar == 'bottom' || $root.userHeartbeatBar == 'none' }">
                         <div class="info">
-                            <Uptime :monitor="monitor" type="24" :pill="true" />
+                            <span
+                                v-if="monitor.folderOnly"
+                                class="folder-badge"
+                                :class="'text-' + folderColor"
+                                :title="$t('Folder Only')"
+                            >
+                                <font-awesome-icon icon="folder" />
+                            </span>
+                            <Uptime v-else :monitor="monitor" type="24" :pill="true" />
                             <span v-if="hasChildren" class="collapse-padding" @click.prevent="changeCollapsed">
                                 <font-awesome-icon icon="chevron-down" class="animated" :class="{ collapsed: isCollapsed}" />
                             </span>
@@ -27,11 +35,11 @@
                         </div>
                     </div>
                     <div v-show="$root.userHeartbeatBar == 'normal'" :key="$root.userHeartbeatBar" class="col-3 col-md-4">
-                        <HeartbeatBar ref="heartbeatBar" size="small" :monitor-id="monitor.id" />
+                        <HeartbeatBar v-if="! monitor.folderOnly" ref="heartbeatBar" size="small" :monitor-id="monitor.id" />
                     </div>
                 </div>
 
-                <div v-if="$root.userHeartbeatBar == 'bottom'" class="row">
+                <div v-if="$root.userHeartbeatBar == 'bottom' && ! monitor.folderOnly" class="row">
                     <div class="col-12 bottom-style">
                         <HeartbeatBar ref="heartbeatBar" size="small" :monitor-id="monitor.id" />
                     </div>
@@ -48,6 +56,8 @@
                     :isSelected="isSelected"
                     :select="select"
                     :deselect="deselect"
+                    :filter-func="filterFunc"
+                    :sort-func="sortFunc"
                     :depth="depth + 1"
                 />
             </div>
@@ -59,7 +69,7 @@
 import HeartbeatBar from "../components/HeartbeatBar.vue";
 import Tag from "../components/Tag.vue";
 import Uptime from "../components/Uptime.vue";
-import { getMonitorRelativeURL } from "../util.ts";
+import { DOWN, MAINTENANCE, PENDING, UP, getMonitorRelativeURL } from "../util.ts";
 
 export default {
     name: "MonitorListItem",
@@ -137,12 +147,41 @@ export default {
                 marginLeft: `${31 * this.depth}px`,
             };
         },
+        /**
+         * A folder shows no uptime, but its icon still carries the aggregated
+         * status of what it contains.
+         * @returns {string} Bootstrap colour name for the folder icon
+         */
+        folderColor() {
+            const status = this.$root.lastHeartbeatList[this.monitor.id]?.status;
+
+            if (status === MAINTENANCE) {
+                return "maintenance";
+            }
+            if (status === DOWN) {
+                return "danger";
+            }
+            if (status === UP) {
+                return "primary";
+            }
+            if (status === PENDING) {
+                return "warning";
+            }
+
+            return "secondary";
+        },
     },
     watch: {
         isSelectMode() {
             // TODO: Resize the heartbeat bar, but too slow
             // this.$refs.heartbeatBar.resize();
         }
+    },
+    mounted() {
+        this.$root.emitter.on("monitorCollapsedAll", this.applyCollapsedAll);
+    },
+    beforeUnmount() {
+        this.$root.emitter.off("monitorCollapsedAll", this.applyCollapsedAll);
     },
     beforeMount() {
 
@@ -183,6 +222,24 @@ export default {
             storageObject[`monitor_${this.monitor.id}`] = this.isCollapsed;
 
             window.localStorage.setItem("monitorCollapsed", JSON.stringify(storageObject));
+
+            // Let the list know, so its expand / collapse all button stays accurate
+            this.$root.emitter.emit("monitorCollapsedChanged", {
+                id: this.monitor.id,
+                collapsed: this.isCollapsed,
+            });
+        },
+
+        /**
+         * Follow the expand / collapse all button. Storage is written once by
+         * the list itself, there is nothing to persist here.
+         * @param {boolean} collapsed Should this folder be closed?
+         * @returns {void}
+         */
+        applyCollapsedAll(collapsed) {
+            if (this.hasChildren) {
+                this.isCollapsed = collapsed;
+            }
         },
         /**
          * Get URL of monitor
@@ -209,6 +266,13 @@ export default {
 
 <style lang="scss" scoped>
 @import "../assets/vars.scss";
+
+.folder-badge {
+    display: inline-block;
+    min-width: 62px;
+    text-align: center;
+    font-size: 15px;
+}
 
 .small-padding {
     padding-left: 5px !important;

@@ -102,6 +102,17 @@
                                 <input id="name" v-model="monitor.name" type="text" class="form-control" required>
                             </div>
 
+                            <!-- Folder Only (group) -->
+                            <div v-if="monitor.type === 'group'" class="my-3 form-check">
+                                <input id="folder-only" v-model="monitor.folderOnly" class="form-check-input" type="checkbox">
+                                <label class="form-check-label" for="folder-only">
+                                    {{ $t("Folder Only") }}
+                                </label>
+                                <div class="form-text">
+                                    {{ $t("folderOnlyDescription") }}
+                                </div>
+                            </div>
+
                             <!-- URL -->
                             <div v-if="monitor.type === 'http' || monitor.type === 'keyword' || monitor.type === 'json-query' || monitor.type === 'real-browser' " class="my-3">
                                 <label for="url" class="form-label">{{ $t("URL") }}</label>
@@ -665,24 +676,31 @@
 
                             <!-- Notifications -->
                             <h2 class="mb-2">{{ $t("Notifications") }}</h2>
-                            <p v-if="$root.notificationList.length === 0">
-                                {{ $t("Not available, please setup.") }}
+
+                            <p v-if="isFolderOnly" class="form-text">
+                                {{ $t("folderOnlyNoNotification") }}
                             </p>
 
-                            <div v-for="notification in $root.notificationList" :key="notification.id" class="form-check form-switch my-3">
-                                <input :id=" 'notification' + notification.id" v-model="monitor.notificationIDList[notification.id]" class="form-check-input" type="checkbox">
+                            <template v-else>
+                                <p v-if="$root.notificationList.length === 0">
+                                    {{ $t("Not available, please setup.") }}
+                                </p>
 
-                                <label class="form-check-label" :for=" 'notification' + notification.id">
-                                    {{ notification.name }}
-                                    <a href="#" @click="$refs.notificationDialog.show(notification.id)">{{ $t("Edit") }}</a>
-                                </label>
+                                <div v-for="notification in $root.notificationList" :key="notification.id" class="form-check form-switch my-3">
+                                    <input :id=" 'notification' + notification.id" v-model="monitor.notificationIDList[notification.id]" class="form-check-input" type="checkbox">
 
-                                <span v-if="notification.isDefault == true" class="badge bg-primary ms-2">{{ $t("Default") }}</span>
-                            </div>
+                                    <label class="form-check-label" :for=" 'notification' + notification.id">
+                                        {{ notification.name }}
+                                        <a href="#" @click="$refs.notificationDialog.show(notification.id)">{{ $t("Edit") }}</a>
+                                    </label>
 
-                            <button class="btn btn-primary me-2" type="button" @click="$refs.notificationDialog.show()">
-                                {{ $t("Setup Notification") }}
-                            </button>
+                                    <span v-if="notification.isDefault == true" class="badge bg-primary ms-2">{{ $t("Default") }}</span>
+                                </div>
+
+                                <button class="btn btn-primary me-2" type="button" @click="$refs.notificationDialog.show()">
+                                    {{ $t("Setup Notification") }}
+                                </button>
+                            </template>
 
                             <!-- Proxies -->
                             <div v-if="monitor.type === 'http' || monitor.type === 'keyword' || monitor.type === 'json-query'">
@@ -1009,6 +1027,7 @@ const monitorDefaults = {
     notificationIDList: {},
     ignoreTls: false,
     upsideDown: false,
+    folderOnly: false,
     packetSize: 56,
     expiryNotification: false,
     maxredirects: 10,
@@ -1199,6 +1218,14 @@ message HealthCheckResponse {
 }` ]);
         },
 
+        /**
+         * Is the monitor being edited a group acting as a plain folder?
+         * @returns {boolean} True if it is a folder only group
+         */
+        isFolderOnly() {
+            return this.monitor.type === "group" && !!this.monitor.folderOnly;
+        },
+
         currentGameObject() {
             if (this.gameList) {
                 for (let game of this.gameList) {
@@ -1337,6 +1364,12 @@ message HealthCheckResponse {
         },
 
         "monitor.type"() {
+            // A group is meant to organise monitors, so a new one is a plain
+            // folder by default. Editing an existing monitor keeps its own value.
+            if (this.isAdd && this.monitor.type === "group") {
+                this.monitor.folderOnly = true;
+            }
+
             if (this.monitor.type === "push") {
                 if (! this.monitor.pushToken) {
                     // ideally this would require checking if the generated token is already used
@@ -1622,6 +1655,7 @@ message HealthCheckResponse {
                     this.$root.add({
                         ...monitorDefaults,
                         type: "group",
+                        folderOnly: true,
                         name: this.draftGroupName,
                         interval: this.monitor.interval,
                         active: false,

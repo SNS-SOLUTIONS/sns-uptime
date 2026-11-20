@@ -36,6 +36,19 @@ class User extends BeanModel {
     }
 
     /**
+     * Get the profile of this user, safe to be sent to the client
+     * @returns {object} Public profile of the user
+     */
+    toPublicJSON() {
+        return {
+            id: this.id,
+            username: this.username,
+            displayName: this.display_name || this.username,
+            email: this.email || null,
+        };
+    }
+
+    /**
      * Create a new JWT for a user
      * @param {User} user The User to create a JsonWebToken for
      * @param {string} jwtSecret The key used to sign the JsonWebToken

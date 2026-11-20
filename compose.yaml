@@ -7,3 +7,9 @@ services:
     ports:
       - 3001:3001
     restart: unless-stopped
+    environment:
+      UPTIME_KUMA_FORWARD_AUTH_ENABLED: "true"
+      UPTIME_KUMA_FORWARD_AUTH_TRUSTED_PROXIES: "100.81.234.126"
+      #UPTIME_KUMA_FORWARD_AUTH_ALLOWED_GROUPS: "uptime-admins"
+      UPTIME_KUMA_FORWARD_AUTH_MODE: "shared"
+      #UPTIME_KUMA_FORWARD_AUTH_LOGOUT_URL: "/outpost.goauthentik.io/sign_out"

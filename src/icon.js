@@ -50,6 +50,11 @@ import {
     faInfoCircle,
     faClone,
     faCertificate,
+    faShieldAlt,
+    faFolder,
+    faUserCheck,
+    faAngleDoubleDown,
+    faAngleDoubleUp,
 } from "@fortawesome/free-solid-svg-icons";
 
 library.add(
@@ -97,6 +102,11 @@ library.add(
     faInfoCircle,
     faClone,
     faCertificate,
+    faShieldAlt,
+    faFolder,
+    faUserCheck,
+    faAngleDoubleDown,
+    faAngleDoubleUp,
 );
 
 export { FontAwesomeIcon };
