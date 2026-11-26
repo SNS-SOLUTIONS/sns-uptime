@@ -119,7 +119,12 @@ router.all("/api/push/:pushToken", async (request, response) => {
         io.to(monitor.user_id).emit("heartbeat", bean.toJSON());
 
         Monitor.sendStats(io, monitor.id, monitor.user_id);
-        new Prometheus(monitor).update(bean, undefined);
+        try {
+            (await Prometheus.createAndInitMetrics(monitor)).update(bean, undefined);
+        } catch (e) {
+            // The heartbeat is stored: a metrics problem must not fail the push
+            log.error("prometheus", `[${monitor.name}] Cannot update metrics: ${e.message}`);
+        }
 
         response.json({
             ok: true,
