@@ -3,6 +3,9 @@ const PrometheusClient = require("prom-client");
 const { log } = require("../src/util");
 
 const commonLabels = [
+    // Same identifier as in the address of the monitor page (/dashboard/<id>): names repeat from one folder to
+    // the next ("Router" in every agency), the identifier does not
+    "monitor_id",
     "monitor_name",
     "monitor_type",
     "monitor_url",
@@ -207,6 +210,7 @@ class Prometheus {
      */
     constructor(monitor, tags = [], placement = {}) {
         this.monitorLabelValues = {
+            monitor_id: monitor.id,
             monitor_name: monitor.name,
             monitor_type: monitor.type,
             monitor_url: monitor.url,
