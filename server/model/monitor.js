@@ -499,7 +499,11 @@ class Monitor extends BeanModel {
         let retries = 0;
 
         try {
-            this.prometheus = await Prometheus.createAndInitMetrics(this);
+            // A folder (an agency included) is not a probe: it never notifies and stays out of the figures of
+            // the dashboard, and likewise out of /metrics. The probes it holds carry its name in their labels.
+            if (!this.isFolderOnly()) {
+                this.prometheus = await Prometheus.createAndInitMetrics(this);
+            }
         } catch (e) {
             // Metrics must never keep a monitor from running
             log.error("prometheus", `[${this.name}] Cannot initialize metrics: ${e.message}`);
