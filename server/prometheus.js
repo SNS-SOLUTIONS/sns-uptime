@@ -8,7 +8,41 @@ const commonLabels = [
     "monitor_url",
     "monitor_hostname",
     "monitor_port",
+    // Place of the monitor in the tree (see Prometheus.getPlacement()): its agency and its folder
+    "monitor_agency",
+    "monitor_group",
 ];
+
+/**
+ * Deepest nesting walked up when looking for the agency of a monitor. Far beyond any real tree: it only stops
+ * a corrupted one, as does the check against cycles (the editor refuses them, a database edited by hand may
+ * still hold one).
+ */
+const MAX_DEPTH = 32;
+
+/**
+ * Group directly above a monitor, read in the database: same join as Monitor.getParent(), limited to the
+ * columns the placement needs.
+ * @param {number} monitorID ID of the monitor
+ * @returns {Promise<LooseObject<any>|null>} The parent, or null at the root
+ */
+async function getParentRow(monitorID) {
+    return await R.getRow(`
+        SELECT parent.id, parent.name, parent.type, parent.agency
+        FROM monitor parent
+        JOIN monitor child ON child.parent = parent.id
+        WHERE child.id = ?
+    `, [ monitorID ]);
+}
+
+/**
+ * Key of a set of label values, whatever the order of its labels.
+ * @param {object} labels Label values
+ * @returns {string} Key
+ */
+function labelKey(labels) {
+    return JSON.stringify(Object.keys(labels).sort().map(name => [ name, labels[name] ?? null ]));
+}
 
 /**
  * Turn a tag name into a valid Prometheus label name ([a-zA-Z_][a-zA-Z0-9_]*): accents removed, any other
@@ -57,6 +91,14 @@ class Prometheus {
      * @type {string[] | null}
      */
     static monitorLabelNames = null;
+
+    /**
+     * Last value written to each metric, by set of label values. When the labels of a running monitor change
+     * (one of its groups renamed, moved or deleted), its values move to the new labels: the monitor never
+     * leaves /metrics in between. Every writer counts, the monitor itself as well as the push route.
+     * @type {Map<string, Map<PrometheusClient.Gauge<string>, number>>}
+     */
+    static lastValues = new Map();
 
     /**
      * Monitor labels/values combination.
@@ -116,7 +158,42 @@ class Prometheus {
     static async createAndInitMetrics(monitor) {
         await Prometheus.initMetrics();
         let tags = await monitor.getTags();
-        return new Prometheus(monitor, tags);
+        let placement = await Prometheus.getPlacement(monitor.id);
+        return new Prometheus(monitor, tags, placement);
+    }
+
+    /**
+     * Where a monitor is filed, read by walking up its groups in the database rather than from the monitor in
+     * memory, whose parent may be outdated (deleting a group unlinks its children in the database only):
+     * - agency: name of the closest group above it that is an agency, "" if there is none;
+     * - group: name of its folder, the group directly above it, "" at the root or when that group is the
+     *   agency itself.
+     * A group gets its own placement, read from the groups above it. Read when the metrics of the monitor are
+     * created: a group renamed or moved afterwards is followed by Monitor.refreshPrometheusLabels().
+     * @param {number} monitorID ID of the monitor
+     * @returns {Promise<{agency: string, group: string}>} Agency and folder names
+     */
+    static async getPlacement(monitorID) {
+        const placement = {
+            agency: "",
+            group: "",
+        };
+        const visited = new Set([ monitorID ]);
+        let parent = await getParentRow(monitorID);
+
+        for (let depth = 0; parent && !visited.has(parent.id) && depth < MAX_DEPTH; depth++) {
+            visited.add(parent.id);
+            if (parent.type === "group" && Boolean(parent.agency)) {
+                placement.agency = parent.name ?? "";
+                break;
+            }
+            if (depth === 0) {
+                placement.group = parent.name ?? "";
+            }
+            parent = await getParentRow(parent.id);
+        }
+
+        return placement;
     }
 
     /**
@@ -125,14 +202,18 @@ class Prometheus {
      * Note: Make sure to call `Prometheus.initMetrics()` once prior creating Prometheus instances.
      * @param {Monitor} monitor Monitor object to monitor
      * @param {LooseObject<any>[]} tags Tags of the monitor (none if omitted)
+     * @param {{agency?: string, group?: string}} placement Agency and folder of the monitor, from
+     * getPlacement() (none if omitted)
      */
-    constructor(monitor, tags = []) {
+    constructor(monitor, tags = [], placement = {}) {
         this.monitorLabelValues = {
             monitor_name: monitor.name,
             monitor_type: monitor.type,
             monitor_url: monitor.url,
             monitor_hostname: monitor.hostname,
-            monitor_port: monitor.port
+            monitor_port: monitor.port,
+            monitor_agency: placement?.agency ?? "",
+            monitor_group: placement?.group ?? "",
         };
         for (const tag of Object.values(tags ?? [])) {
             const label = toLabelName(tag.name);
@@ -141,6 +222,21 @@ class Prometheus {
                 this.monitorLabelValues[label] = tag.value ?? "";
             }
         }
+    }
+
+    /**
+     * Write one metric of the monitor, and remember the value for moveTo().
+     * @param {PrometheusClient.Gauge<string>} gauge Metric
+     * @param {number} value Value
+     * @returns {void}
+     */
+    write(gauge, value) {
+        gauge.set(this.monitorLabelValues, value);
+        const key = labelKey(this.monitorLabelValues);
+        if (!Prometheus.lastValues.has(key)) {
+            Prometheus.lastValues.set(key, new Map());
+        }
+        Prometheus.lastValues.get(key).set(gauge, value);
     }
 
     /**
@@ -158,7 +254,7 @@ class Prometheus {
                 } else {
                     isValid = 0;
                 }
-                Prometheus.monitorCertIsValid.set(this.monitorLabelValues, isValid);
+                this.write(Prometheus.monitorCertIsValid, isValid);
             } catch (e) {
                 log.error("prometheus", "Caught error");
                 log.error("prometheus", e);
@@ -166,7 +262,7 @@ class Prometheus {
 
             try {
                 if (tlsInfo.certInfo != null) {
-                    Prometheus.monitorCertDaysRemaining.set(this.monitorLabelValues, tlsInfo.certInfo.daysRemaining);
+                    this.write(Prometheus.monitorCertDaysRemaining, tlsInfo.certInfo.daysRemaining);
                 }
             } catch (e) {
                 log.error("prometheus", "Caught error");
@@ -176,7 +272,7 @@ class Prometheus {
 
         if (heartbeat) {
             try {
-                Prometheus.monitorStatus.set(this.monitorLabelValues, heartbeat.status);
+                this.write(Prometheus.monitorStatus, heartbeat.status);
             } catch (e) {
                 log.error("prometheus", "Caught error");
                 log.error("prometheus", e);
@@ -184,10 +280,10 @@ class Prometheus {
 
             try {
                 if (typeof heartbeat.ping === "number") {
-                    Prometheus.monitorResponseTime.set(this.monitorLabelValues, heartbeat.ping);
+                    this.write(Prometheus.monitorResponseTime, heartbeat.ping);
                 } else {
                     // Is it good?
-                    Prometheus.monitorResponseTime.set(this.monitorLabelValues, -1);
+                    this.write(Prometheus.monitorResponseTime, -1);
                 }
             } catch (e) {
                 log.error("prometheus", "Caught error");
@@ -201,6 +297,7 @@ class Prometheus {
      * @returns {void}
      */
     remove() {
+        Prometheus.lastValues.delete(labelKey(this.monitorLabelValues));
         try {
             Prometheus.monitorCertDaysRemaining?.remove(this.monitorLabelValues);
             Prometheus.monitorCertIsValid?.remove(this.monitorLabelValues);
@@ -209,6 +306,28 @@ class Prometheus {
         } catch (e) {
             console.error(e);
         }
+    }
+
+    /**
+     * Hand the metrics of the monitor over to `next`, the same monitor under new label values (one of its
+     * groups was renamed, moved or deleted): the old series go and the last values written are set again under
+     * the new labels, in one go (no scrape in between), so that the monitor stays in /metrics until its next
+     * heartbeat. Old series first: the labels may well be the same.
+     * @param {Prometheus} next Instance holding the new label values
+     * @returns {Prometheus} `next`
+     */
+    moveTo(next) {
+        const values = Prometheus.lastValues.get(labelKey(this.monitorLabelValues)) ?? new Map();
+        this.remove();
+        for (const [ gauge, value ] of values) {
+            try {
+                next.write(gauge, value);
+            } catch (e) {
+                log.error("prometheus", "Caught error");
+                log.error("prometheus", e);
+            }
+        }
+        return next;
     }
 }
 

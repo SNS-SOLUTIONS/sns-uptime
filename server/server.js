@@ -756,6 +756,19 @@ let needSetup = false;
                     }
                 }
 
+                // A group renamed, moved, turned into an agency (or back), or that stops being a group changes
+                // the agency and folder labels of everything below it (read before the change: a group that
+                // stops being one loses its children)
+                let groupBefore = null;
+                if (bean.type === "group") {
+                    groupBefore = {
+                        name: bean.name,
+                        parent: bean.parent,
+                        agency: bean.isAgency(),
+                        descendantIDs: await Monitor.getAllChildrenIDs(bean.id),
+                    };
+                }
+
                 // Remove children if monitor type has changed (from group to non-group)
                 if (bean.type === "group" && monitor.type !== bean.type) {
                     removeGroupChildren = true;
@@ -865,6 +878,15 @@ let needSetup = false;
 
                 if (await bean.isActive()) {
                     await restartMonitor(socket.userID, bean.id);
+                }
+
+                if (groupBefore !== null && (
+                    removeGroupChildren ||
+                    bean.name !== groupBefore.name ||
+                    bean.parent !== groupBefore.parent ||
+                    bean.isAgency() !== groupBefore.agency
+                )) {
+                    await refreshPrometheusLabels(groupBefore.descendantIDs);
                 }
 
                 await server.sendMonitorList(socket);
@@ -1053,6 +1075,10 @@ let needSetup = false;
 
                 log.info("manage", `Delete Monitor: ${monitorID} User ID: ${socket.userID}`);
 
+                // What a deleted group holds moves up to the root (the database unlinks it): the agency and folder
+                // labels of everything below the group follow
+                const descendantIDs = await Monitor.getAllChildrenIDs(monitorID);
+
                 if (monitorID in server.monitorList) {
                     await server.monitorList[monitorID].stop();
                     delete server.monitorList[monitorID];
@@ -1064,6 +1090,8 @@ let needSetup = false;
                     monitorID,
                     socket.userID,
                 ]);
+
+                await refreshPrometheusLabels(descendantIDs);
 
                 // Fix #2880
                 apicache.clear();
@@ -1825,6 +1853,23 @@ async function startMonitor(userID, monitorID) {
  */
 async function restartMonitor(userID, monitorID) {
     return await startMonitor(userID, monitorID);
+}
+
+/**
+ * Read again the agency and the folder in the metrics labels of the running monitors among the given ones,
+ * after a change to the groups above them (see Monitor.refreshPrometheusLabels())
+ * @param {number[]} monitorIDs IDs of the monitors
+ * @returns {Promise<void>}
+ */
+async function refreshPrometheusLabels(monitorIDs) {
+    for (const monitorID of monitorIDs) {
+        try {
+            await server.monitorList[monitorID]?.refreshPrometheusLabels();
+        } catch (e) {
+            // The labels stay as they were until the monitor restarts: never a reason to fail the change
+            log.error("prometheus", `Cannot refresh the labels of monitor ${monitorID}: ${e.message}`);
+        }
+    }
 }
 
 /**

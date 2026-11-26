@@ -1292,6 +1292,28 @@ class Monitor extends BeanModel {
     }
 
     /**
+     * Read again the agency and the folder in the metrics labels of the running monitor, after one of the
+     * groups above it was renamed, moved, deleted or became (or stopped being) an agency. Its last values
+     * follow the new labels: it never leaves /metrics.
+     * @returns {Promise<void>}
+     */
+    async refreshPrometheusLabels() {
+        const current = this.prometheus;
+        if (!current || this.isStop) {
+            return;
+        }
+
+        const next = await Prometheus.createAndInitMetrics(this);
+
+        // Paused, deleted or restarted in the meantime (a restart stops this instance and starts a new one):
+        // its metrics are already taken care of
+        if (this.isStop || this.prometheus !== current) {
+            return;
+        }
+        this.prometheus = current.moveTo(next);
+    }
+
+    /**
      * Helper Method:
      * returns URL object for further usage
      * returns null if url is invalid
