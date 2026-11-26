@@ -8,6 +8,7 @@ const { tcping, ping, checkCertificate, checkStatusCode, getTotalClientInRoom, s
 } = require("../util-server");
 const { R } = require("redbean-node");
 const { BeanModel } = require("redbean-node/dist/bean-model");
+const { Prometheus } = require("../prometheus");
 const { Notification } = require("../notification");
 const { Proxy } = require("../proxy");
 const { demoMode } = require("../config");
@@ -496,6 +497,13 @@ class Monitor extends BeanModel {
     async start(io) {
         let previousBeat = null;
         let retries = 0;
+
+        try {
+            this.prometheus = await Prometheus.createAndInitMetrics(this);
+        } catch (e) {
+            // Metrics must never keep a monitor from running
+            log.error("prometheus", `[${this.name}] Cannot initialize metrics: ${e.message}`);
+        }
 
         const beat = async () => {
 
