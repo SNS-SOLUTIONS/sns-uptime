@@ -768,6 +768,7 @@ let needSetup = false;
                         descendantIDs: await Monitor.getAllChildrenIDs(bean.id),
                     };
                 }
+                const parentBefore = bean.parent;
 
                 // Remove children if monitor type has changed (from group to non-group)
                 if (bean.type === "group" && monitor.type !== bean.type) {
@@ -878,6 +879,10 @@ let needSetup = false;
 
                 if (await bean.isActive()) {
                     await restartMonitor(socket.userID, bean.id);
+                } else if (bean.parent !== parentBefore) {
+                    // Moved into a paused group: not restarted, a running monitor keeps running (pausing a group
+                    // leaves its children running), and its agency and folder labels follow its new place
+                    await refreshPrometheusLabels([ bean.id ]);
                 }
 
                 if (groupBefore !== null && (
@@ -1856,8 +1861,9 @@ async function restartMonitor(userID, monitorID) {
 }
 
 /**
- * Read again the agency and the folder in the metrics labels of the running monitors among the given ones,
- * after a change to the groups above them (see Monitor.refreshPrometheusLabels())
+ * Read again the agency, the client and the folders in the metrics labels of the running monitors among the
+ * given ones, after a change to the groups above them or a move without restart (see
+ * Monitor.refreshPrometheusLabels())
  * @param {number[]} monitorIDs IDs of the monitors
  * @returns {Promise<void>}
  */

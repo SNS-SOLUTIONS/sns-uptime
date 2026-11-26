@@ -1296,9 +1296,9 @@ class Monitor extends BeanModel {
     }
 
     /**
-     * Read again the agency and the folder in the metrics labels of the running monitor, after one of the
-     * groups above it was renamed, moved, deleted or became (or stopped being) an agency. Its last values
-     * follow the new labels: it never leaves /metrics.
+     * Read again the agency, the client and the folders in the metrics labels of the running monitor, after
+     * one of the groups above it was renamed, moved, deleted or became (or stopped being) an agency, or after
+     * it was moved without a restart. Its last values follow the new labels: it never leaves /metrics.
      * @returns {Promise<void>}
      */
     async refreshPrometheusLabels() {

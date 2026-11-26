@@ -11,8 +11,11 @@ const commonLabels = [
     "monitor_url",
     "monitor_hostname",
     "monitor_port",
-    // Place of the monitor in the tree (see Prometheus.getPlacement()): its agency and its folder
+    // Place of the monitor in the tree (see Prometheus.getPlacement()): its agency, its client, the path of its
+    // folders and the folder that holds it
     "monitor_agency",
+    "monitor_client",
+    "monitor_path",
     "monitor_group",
 ];
 
@@ -36,6 +39,16 @@ async function getParentRow(monitorID) {
         JOIN monitor child ON child.parent = parent.id
         WHERE child.id = ?
     `, [ monitorID ]);
+}
+
+/**
+ * Escape a folder name for monitor_path, where "/" separates the folders: "\" becomes "\\" and "/" becomes
+ * "\/" ("Client / Site" -> "Client \/ Site"). A reader splits the path on the "/" that no "\" escapes.
+ * @param {string} name Folder name
+ * @returns {string} Escaped name
+ */
+function escapePathSegment(name) {
+    return String(name ?? "").replace(/\\/g, "\\\\").replace(/\//g, "\\/");
 }
 
 /**
@@ -167,36 +180,56 @@ class Prometheus {
 
     /**
      * Where a monitor is filed, read by walking up its groups in the database rather than from the monitor in
-     * memory, whose parent may be outdated (deleting a group unlinks its children in the database only):
+     * memory, whose parent may be outdated (deleting a group unlinks its children in the database only). The
+     * folders of a monitor are the groups of any kind (folder only or monitored) between its agency, or the
+     * root when it has none, and itself:
      * - agency: name of the closest group above it that is an agency, "" if there is none;
-     * - group: name of its folder, the group directly above it, "" at the root or when that group is the
-     *   agency itself.
-     * A group gets its own placement, read from the groups above it. Read when the metrics of the monitor are
-     * created: a group renamed or moved afterwards is followed by Monitor.refreshPrometheusLabels().
+     * - client: name of its first folder, the one right under the agency (under the root outside any agency),
+     *   "" when the monitor sits directly in its agency or at the root;
+     * - path: names of all its folders, top-down, each escaped (escapePathSegment()) and joined with "/"
+     *   ("Client 1/Site \/ B"), "" without any folder; its first folder is the client;
+     * - group: name of the group directly above it, "" at the root or when that group is the agency itself
+     *   (label kept as it was: a reader of the previous labels still finds its folder there).
+     * The walk stops at the agency (nothing above it counts), at the root, on a cycle or after MAX_DEPTH groups;
+     * on a cycle or at the limit, a warning is logged and what was read is kept. A group gets its own
+     * placement, read from the groups above it. Read when the metrics of the monitor are created: a group
+     * renamed or moved afterwards is followed by Monitor.refreshPrometheusLabels().
      * @param {number} monitorID ID of the monitor
-     * @returns {Promise<{agency: string, group: string}>} Agency and folder names
+     * @returns {Promise<{agency: string, client: string, path: string, group: string}>} Agency, client, folder
+     * path and folder
      */
     static async getPlacement(monitorID) {
-        const placement = {
-            agency: "",
-            group: "",
-        };
+        // Groups above the monitor, the closest first, up to its agency included
+        const groups = [];
         const visited = new Set([ monitorID ]);
         let parent = await getParentRow(monitorID);
 
-        for (let depth = 0; parent && !visited.has(parent.id) && depth < MAX_DEPTH; depth++) {
-            visited.add(parent.id);
-            if (parent.type === "group" && Boolean(parent.agency)) {
-                placement.agency = parent.name ?? "";
+        while (parent) {
+            if (visited.has(parent.id) || groups.length >= MAX_DEPTH) {
+                const reason = visited.has(parent.id) ? "cycle in the groups above it" : `more than ${MAX_DEPTH} groups above it`;
+                log.warn("prometheus", `Monitor ${monitorID}: ${reason}, placement read from the ${groups.length} closest`);
                 break;
             }
-            if (depth === 0) {
-                placement.group = parent.name ?? "";
+            visited.add(parent.id);
+            groups.push(parent);
+            if (parent.type === "group" && Boolean(parent.agency)) {
+                break;
             }
             parent = await getParentRow(parent.id);
         }
 
-        return placement;
+        const agency = groups.find(group => group.type === "group" && Boolean(group.agency));
+        const folders = groups
+            .filter(group => group !== agency)
+            .map(group => group.name ?? "")
+            .reverse();
+
+        return {
+            agency: agency?.name ?? "",
+            client: folders[0] ?? "",
+            path: folders.map(escapePathSegment).join("/"),
+            group: groups[0] === undefined || groups[0] === agency ? "" : groups[0].name ?? "",
+        };
     }
 
     /**
@@ -205,8 +238,8 @@ class Prometheus {
      * Note: Make sure to call `Prometheus.initMetrics()` once prior creating Prometheus instances.
      * @param {Monitor} monitor Monitor object to monitor
      * @param {LooseObject<any>[]} tags Tags of the monitor (none if omitted)
-     * @param {{agency?: string, group?: string}} placement Agency and folder of the monitor, from
-     * getPlacement() (none if omitted)
+     * @param {{agency?: string, client?: string, path?: string, group?: string}} placement Agency, client,
+     * folder path and folder of the monitor, from getPlacement() (none if omitted)
      */
     constructor(monitor, tags = [], placement = {}) {
         this.monitorLabelValues = {
@@ -217,6 +250,8 @@ class Prometheus {
             monitor_hostname: monitor.hostname,
             monitor_port: monitor.port,
             monitor_agency: placement?.agency ?? "",
+            monitor_client: placement?.client ?? "",
+            monitor_path: placement?.path ?? "",
             monitor_group: placement?.group ?? "",
         };
         for (const tag of Object.values(tags ?? [])) {
